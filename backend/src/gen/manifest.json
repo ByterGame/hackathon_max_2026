@@ -1,0 +1,10 @@
+{
+  "files": {
+    "openapi.yaml": "fbd4686daa9fb8f061ef6ca028ade2b18cebc7a7553ad3188b7473dca649e2a0",
+    "src/gen/example_codegen/api/client/create_request.py": "d667df8f6dd8db94fde21371aa8edaf57d1e5ac53f00a85dd83da64f0e1e5c83",
+    "src/gen/example_codegen/api/client/get_request.py": "053b9bd6121e8d532e8b6179b895738f0cfe10d6dff2701f38a339d757b8f7a5",
+    "src/gen/example_codegen/internal/request_data.py": "8244d46e81a74b3582ce59c88f027fae32ce9f563b51089718dd31b877875af5",
+    "src/views/_generated_router.py": "a9c51b20c7ff40450fe960e6887b4b5c74fa76efcf932c3080e86e4522647e84"
+  },
+  "version": 1
+}

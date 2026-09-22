@@ -1,0 +1,42 @@
+path: /example_codegen/client/get_request
+method: get
+summary: Получить заявку
+description: Возвращает заявку по идентификатору.
+parameters:
+  - name: request_id
+    in: query
+    required: true
+    schema:
+      type: integer
+      minimum: 1
+responses:
+  '200':
+    description: Заявка найдена.
+    content:
+      application/json:
+        schema:
+          $ref: '#/schemas/Response200'
+  '404':
+    description: Заявки с таким идентификатором нет.
+    content:
+      application/json:
+        schema:
+          $ref: '#/schemas/Response404'
+schemas:
+  Response200:
+    type: object
+    required: [id, status]
+    properties:
+      id:
+        type: integer
+      status:
+        $ref: '../internal/request_data.yaml#/schemas/RequestStatus'
+  Response404:
+    type: object
+    required: [code, message]
+    properties:
+      code:
+        type: string
+        const: request_not_found
+      message:
+        type: string
