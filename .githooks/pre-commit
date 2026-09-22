@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+
+repository_root=$(git rev-parse --show-toplevel)
+
+if [ -n "${VIRTUAL_ENV:-}" ] && [ -x "$VIRTUAL_ENV/bin/python" ]; then
+    project_python="$VIRTUAL_ENV/bin/python"
+elif [ -x "$repository_root/.venv/bin/python" ]; then
+    project_python="$repository_root/.venv/bin/python"
+else
+    echo "pre-commit: активируйте Python-окружение или создайте .venv в корне репозитория" >&2
+    exit 1
+fi
+
+cd "$repository_root/backend"
+exec "$project_python" -B -m tools.codegen --check
