@@ -1,0 +1,82 @@
+{{ header }}
+{% if routes %}
+from collections.abc import Awaitable, Callable
+from functools import wraps
+from importlib import import_module
+from typing import Any
+
+from fastapi import APIRouter
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
+from starlette.responses import Response
+{% else %}
+from fastapi import APIRouter
+{% endif %}
+
+router = APIRouter()
+{% if routes %}
+
+type Handler = Callable[..., Awaitable[Any]]
+
+
+def _with_response_codes(
+    handler: Handler,
+    response_codes: dict[type[Any], int],
+) -> Callable[..., Awaitable[Response]]:
+    @wraps(handler)
+    async def endpoint(*args: Any, **kwargs: Any) -> Response:
+        result = await handler(*args, **kwargs)
+        if isinstance(result, Response):
+            return result
+        try:
+            status_code = response_codes[type(result)]
+        except KeyError:
+            expected = ", ".join(model.__name__ for model in response_codes)
+            raise TypeError(
+                f"{handler.__module__}.{handler.__name__} returned "
+                f"{type(result).__name__}; expected {expected} or Response"
+            ) from None
+        return JSONResponse(
+            status_code=status_code,
+            content=jsonable_encoder(result),
+        )
+
+    return endpoint
+{% endif %}
+{% for route in routes %}
+
+_handler = import_module({{ ('src.' + route.endpoint.module) | py }})
+_models = import_module({{ ('src.' + route.endpoint.models_module) | py }})
+{{ route.response_codes_name }} = {
+{% for response in route.responses %}
+{% if response.model %}
+    _models.{{ response.model }}: {{ response.status }},
+{% endif %}
+{% endfor %}
+}
+router.add_api_route(
+    path={{ route.endpoint.path | py }},
+    endpoint=_with_response_codes(
+        _handler.{{ route.endpoint.function }},
+        {{ route.response_codes_name }},
+    ),
+    methods=[{{ (route.endpoint.method | upper) | py }}],
+    operation_id={{ route.endpoint.operation.operationId | py }},
+    summary={{ route.endpoint.operation.get('summary') | py }},
+    description={{ route.endpoint.operation.get('description') | py }},
+    tags={{ route.endpoint.operation.tags | py }},
+    deprecated={{ route.endpoint.operation.get('deprecated', False) | py }},
+    status_code={{ route.success.status }},
+    response_model={% if route.success.model %}_models.{{ route.success.model }}{% else %}None{% endif %},
+    responses={
+{% for response in route.responses %}
+        {{ response.status }}: {
+            "description": {{ response.description | py }},
+{% if response.model %}
+            "model": _models.{{ response.model }},
+{% endif %}
+        },
+{% endfor %}
+    },
+)
+{% endfor %}

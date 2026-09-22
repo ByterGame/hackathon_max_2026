@@ -1,0 +1,22 @@
+"""{{ endpoint.method | upper }} {{ endpoint.path }}. Реализацию дополняем вручную."""
+
+{% if endpoint.has_query or endpoint.body_model %}
+from typing import Annotated
+
+{% endif %}
+from fastapi import {% if endpoint.body_model %}Body, {% endif %}HTTPException{% if endpoint.has_query %}, Query{% endif %}, Response
+
+{% if endpoint.has_query or endpoint.body_model or return_models %}
+from src.{{ endpoint.models_module.rsplit('.', 1)[0] }} import {{ endpoint.function }} as models
+{% endif %}
+
+
+async def {{ endpoint.function }}(
+{% if endpoint.has_query %}
+    query: Annotated[models.QueryParams, Query()],
+{% endif %}
+{% if endpoint.body_model %}
+    body: Annotated[models.{{ endpoint.body_model }}, Body()],
+{% endif %}
+) -> {% for return_model in return_models %}models.{{ return_model }} | {% endfor %}Response:
+    raise HTTPException(status_code=501, detail="Not implemented")
