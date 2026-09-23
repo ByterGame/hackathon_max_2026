@@ -1,0 +1,19 @@
+path: /service/health
+method: get
+summary: Проверить состояние сервиса
+description: Возвращает успешный ответ, если HTTP-сервис работает.
+responses:
+  '200':
+    description: Сервис работает.
+    content:
+      application/json:
+        schema:
+          $ref: '#/schemas/Response200'
+schemas:
+  Response200:
+    type: object
+    required: [status]
+    properties:
+      status:
+        type: string
+        const: ok

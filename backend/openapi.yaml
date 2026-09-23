@@ -49,6 +49,48 @@ paths:
       operationId: example_codegen_client_get_request
       tags:
       - example_codegen
+  /images/get_next:
+    get:
+      summary: Получить следующую картинку
+      description: Возвращает следующую картинку из упорядоченного циклического списка.
+      parameters:
+      - name: current_id
+        in: query
+        required: false
+        description: Имя картинки, показанной сейчас.
+        schema:
+          type: string
+          maxLength: 255
+      responses:
+        '200':
+          description: Следующая картинка найдена.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.images.api.get_next.Response200'
+        '404':
+          description: В каталоге нет картинок.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.images.api.get_next.Response404'
+      operationId: images_get_next
+      tags:
+      - images
+  /service/health:
+    get:
+      summary: Проверить состояние сервиса
+      description: Возвращает успешный ответ, если HTTP-сервис работает.
+      responses:
+        '200':
+          description: Сервис работает.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.service.api.health.Response200'
+      operationId: service_health
+      tags:
+      - service
 components:
   schemas:
     gen.example_codegen.internal.request_data.RequestStatus:
@@ -110,3 +152,40 @@ components:
           minimum: 1
       required:
       - request_id
+    gen.images.api.get_next.Response200:
+      type: object
+      required:
+      - id
+      - url
+      properties:
+        id:
+          type: string
+        url:
+          type: string
+    gen.images.api.get_next.Response404:
+      type: object
+      required:
+      - code
+      - message
+      properties:
+        code:
+          type: string
+          const: images_not_found
+        message:
+          type: string
+    gen.images.api.get_next.QueryParams:
+      type: object
+      properties:
+        current_id:
+          type: string
+          maxLength: 255
+          description: Имя картинки, показанной сейчас.
+      required: []
+    gen.service.api.health.Response200:
+      type: object
+      required:
+      - status
+      properties:
+        status:
+          type: string
+          const: ok

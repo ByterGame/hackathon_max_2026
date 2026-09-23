@@ -1,0 +1,44 @@
+path: /images/get_next
+method: get
+summary: Получить следующую картинку
+description: Возвращает следующую картинку из упорядоченного циклического списка.
+parameters:
+  - name: current_id
+    in: query
+    required: false
+    description: Имя картинки, показанной сейчас.
+    schema:
+      type: string
+      maxLength: 255
+responses:
+  '200':
+    description: Следующая картинка найдена.
+    content:
+      application/json:
+        schema:
+          $ref: '#/schemas/Response200'
+  '404':
+    description: В каталоге нет картинок.
+    content:
+      application/json:
+        schema:
+          $ref: '#/schemas/Response404'
+
+schemas:
+  Response200:
+    type: object
+    required: [id, url]
+    properties:
+      id:
+        type: string
+      url:
+        type: string
+  Response404:
+    type: object
+    required: [code, message]
+    properties:
+      code:
+        type: string
+        const: images_not_found
+      message:
+        type: string

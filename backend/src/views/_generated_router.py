@@ -96,3 +96,62 @@ router.add_api_route(
         },
     },
 )
+
+_handler = import_module('src.views.images.get_next')
+_models = import_module('src.gen.images.api.get_next')
+_RESPONSE_CODES_IMAGES_GET_NEXT = {
+    _models.Response200: 200,
+    _models.Response404: 404,
+}
+router.add_api_route(
+    path='/images/get_next',
+    endpoint=_with_response_codes(
+        _handler.get_next,
+        _RESPONSE_CODES_IMAGES_GET_NEXT,
+    ),
+    methods=['GET'],
+    operation_id='images_get_next',
+    summary='Получить следующую картинку',
+    description='Возвращает следующую картинку из упорядоченного циклического списка.',
+    tags=['images'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Следующая картинка найдена.',
+            "model": _models.Response200,
+        },
+        404: {
+            "description": 'В каталоге нет картинок.',
+            "model": _models.Response404,
+        },
+    },
+)
+
+_handler = import_module('src.views.service.health')
+_models = import_module('src.gen.service.api.health')
+_RESPONSE_CODES_SERVICE_HEALTH = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/service/health',
+    endpoint=_with_response_codes(
+        _handler.health,
+        _RESPONSE_CODES_SERVICE_HEALTH,
+    ),
+    methods=['GET'],
+    operation_id='service_health',
+    summary='Проверить состояние сервиса',
+    description='Возвращает успешный ответ, если HTTP-сервис работает.',
+    tags=['service'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Сервис работает.',
+            "model": _models.Response200,
+        },
+    },
+)
