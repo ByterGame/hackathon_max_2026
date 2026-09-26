@@ -5,6 +5,7 @@ aiosignal==1.4.0
 annotated-doc==0.0.5
 annotated-types==0.8.0
 anyio==4.15.1
+asyncpg==0.31.0
 attrs==26.1.0
 backoff==2.2.1
 click==8.5.0

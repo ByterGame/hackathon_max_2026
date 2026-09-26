@@ -1,13 +1,51 @@
 services:
+  db:
+    image: postgres:17.11-alpine3.24
+    environment:
+      POSTGRES_DB: "${DB_NAME:?Set DB_NAME in .env}"
+      POSTGRES_USER: "${DB_USER:?Set DB_USER in .env}"
+      POSTGRES_PASSWORD: "${DB_PASSWORD:?Set DB_PASSWORD in .env}"
+      PGPORT: "${DB_PORT:?Set DB_PORT in .env}"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p \"$${PGPORT}\" -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
   app:
     build: .
+    image: hackathon-max-app:local
+    pull_policy: build
+    depends_on:
+      db:
+        condition: service_healthy
     environment:
-      BOT_TOKEN: "${BOT_TOKEN:-}"
-      PORT: "${PORT:-8000}"
+      BOT_TOKEN: "${BOT_TOKEN:?Set BOT_TOKEN in .env}"
+      PORT: "${PORT:?Set PORT in .env}"
+      DB_HOST: "${DB_HOST:?Set DB_HOST in .env}"
+      DB_PORT: "${DB_PORT:?Set DB_PORT in .env}"
+      DB_NAME: "${DB_NAME:?Set DB_NAME in .env}"
+      DB_USER: "${DB_USER:?Set DB_USER in .env}"
+      DB_PASSWORD: "${DB_PASSWORD:?Set DB_PASSWORD in .env}"
     ports:
-      - "127.0.0.1:${PORT:-8000}:${PORT:-8000}"
+      - "127.0.0.1:${PORT:?Set PORT in .env}:${PORT:?Set PORT in .env}"
     healthcheck:
       test: ["CMD", "python", "-c", "import os, urllib.request; urllib.request.urlopen(f\"http://127.0.0.1:{os.environ['PORT']}/service/health\")"]
       interval: 10s
       timeout: 3s
       retries: 3
+    restart: unless-stopped
+
+  bot:
+    image: hackathon-max-app:local
+    pull_policy: never
+    command: ["python", "-m", "src.bot.main"]
+    environment:
+      BOT_TOKEN: "${BOT_TOKEN:?Set BOT_TOKEN in .env}"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

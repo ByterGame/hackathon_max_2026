@@ -91,6 +91,26 @@ paths:
       operationId: service_health
       tags:
       - service
+  /service/ready:
+    get:
+      summary: Проверить доступность PostgreSQL
+      description: Выполняет простой запрос к базе данных.
+      responses:
+        '200':
+          description: База данных доступна.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.service.api.ready.Response200'
+        '503':
+          description: База данных недоступна.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.service.api.ready.Response503'
+      operationId: service_ready
+      tags:
+      - service
 components:
   schemas:
     gen.example_codegen.internal.request_data.RequestStatus:
@@ -189,3 +209,19 @@ components:
         status:
           type: string
           const: ok
+    gen.service.api.ready.Response200:
+      type: object
+      required:
+      - status
+      properties:
+        status:
+          type: string
+          const: ok
+    gen.service.api.ready.Response503:
+      type: object
+      required:
+      - status
+      properties:
+        status:
+          type: string
+          const: unavailable

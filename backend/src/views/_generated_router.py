@@ -155,3 +155,35 @@ router.add_api_route(
         },
     },
 )
+
+_handler = import_module('src.views.service.ready')
+_models = import_module('src.gen.service.api.ready')
+_RESPONSE_CODES_SERVICE_READY = {
+    _models.Response200: 200,
+    _models.Response503: 503,
+}
+router.add_api_route(
+    path='/service/ready',
+    endpoint=_with_response_codes(
+        _handler.ready,
+        _RESPONSE_CODES_SERVICE_READY,
+    ),
+    methods=['GET'],
+    operation_id='service_ready',
+    summary='Проверить доступность PostgreSQL',
+    description='Выполняет простой запрос к базе данных.',
+    tags=['service'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'База данных доступна.',
+            "model": _models.Response200,
+        },
+        503: {
+            "description": 'База данных недоступна.',
+            "model": _models.Response503,
+        },
+    },
+)

@@ -1,0 +1,32 @@
+path: /service/ready
+method: get
+summary: Проверить доступность PostgreSQL
+description: Выполняет простой запрос к базе данных.
+responses:
+  '200':
+    description: База данных доступна.
+    content:
+      application/json:
+        schema:
+          $ref: '#/schemas/Response200'
+  '503':
+    description: База данных недоступна.
+    content:
+      application/json:
+        schema:
+          $ref: '#/schemas/Response503'
+schemas:
+  Response200:
+    type: object
+    required: [status]
+    properties:
+      status:
+        type: string
+        const: ok
+  Response503:
+    type: object
+    required: [status]
+    properties:
+      status:
+        type: string
+        const: unavailable

@@ -1,12 +1,13 @@
 {
   "files": {
-    "openapi.yaml": "357cea23f2e0084c1825e284034fde862ec5054594130a61c13bb6348180a37b",
+    "openapi.yaml": "6e3b192ffbeb7473189043f998955c958816a856cd1dedf80341133fb21a03d5",
     "src/gen/example_codegen/api/client/create_request.py": "d667df8f6dd8db94fde21371aa8edaf57d1e5ac53f00a85dd83da64f0e1e5c83",
     "src/gen/example_codegen/api/client/get_request.py": "053b9bd6121e8d532e8b6179b895738f0cfe10d6dff2701f38a339d757b8f7a5",
     "src/gen/example_codegen/internal/request_data.py": "8244d46e81a74b3582ce59c88f027fae32ce9f563b51089718dd31b877875af5",
     "src/gen/images/api/get_next.py": "6e195a068c2d5e4749d973ddc43fd88248a936b3be6339ab00c6e88aceff49b9",
     "src/gen/service/api/health.py": "d2a11e3c9e3d66322c748a68d5f965cbd5d80303cb05ee68ce2bf6bac4845108",
-    "src/views/_generated_router.py": "45542a7db86cc5fdbe6ea758b2cb20e2f43de618c83e16fb7aab019c7c229657"
+    "src/gen/service/api/ready.py": "132172ca7b02a5b27cb1e005fbfe8e7dc2e7599da745221307fdcd1a28859f25",
+    "src/views/_generated_router.py": "19a97c139741db0c0fc7541374dd08ffd9841749bc15dccb3d5bae3d6e9940cf"
   },
   "version": 1
 }
