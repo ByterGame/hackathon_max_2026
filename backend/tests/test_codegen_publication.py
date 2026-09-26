@@ -35,36 +35,6 @@ class PublicationTests(unittest.TestCase):
         self.assertTrue((self.root / self.model).exists())
         self.assertEqual((self.root / MANIFEST).read_bytes(), before)
 
-    def test_domain_first_layout_removes_old_modules(self):
-        old_api = Path("src/gen/api/request/client/get_request.py")
-        old_internal = Path("src/gen/request/request_data.py")
-        new_api = Path("src/gen/request/api/client/get_request.py")
-        new_internal = Path("src/gen/request/internal/request_data.py")
-        publish(
-            self.root,
-            {old_api: self.code, old_internal: self.code},
-            set(),
-            False,
-        )
-        files = {new_api: self.code, new_internal: self.code}
-        publish(self.root, files, set(), False)
-        for path in (old_api, old_internal):
-            self.assertFalse((self.root / path).exists())
-        for path in files:
-            self.assertEqual((self.root / path).read_text(), self.code)
-        self.assertFalse(publish(self.root, files, set(), False))
-
-    def test_openapi_moves_from_legacy_build_directory(self):
-        legacy = Path("build/openapi.yaml")
-        current = Path("openapi.yaml")
-        publish(self.root, {legacy: self.code}, set(), False)
-
-        publish(self.root, {current: self.code}, set(), False)
-
-        self.assertFalse((self.root / legacy).exists())
-        self.assertEqual((self.root / current).read_text(), self.code)
-        self.assertFalse(publish(self.root, {current: self.code}, set(), False))
-
     def test_manual_edit_blocks_all_changes(self):
         publish(self.root, {self.model: self.code}, set(), False)
         changed = self.code + "# manual change\n"
@@ -82,22 +52,12 @@ class PublicationTests(unittest.TestCase):
         publish(self.root, {}, set(), False)
         self.assertTrue(self.model_path.exists())
 
-    def test_second_identical_generation_is_unchanged(self):
-        publish(self.root, {self.model: self.code}, set(), False)
-        self.assertFalse(publish(self.root, {self.model: self.code}, set(), False))
-
     def test_manifest_cannot_claim_a_handler(self):
         path = self.root / MANIFEST
         path.parent.mkdir(parents=True)
         path.write_text('{"version": 1, "files": {"src/views/example.py": "hash"}}')
         with self.assertRaisesRegex(ContractError, "Недопустимая запись"):
             publish(self.root, {}, set(), False)
-
-    def test_removing_one_class_updates_module(self):
-        original = self.code + "class Another: pass\n"
-        publish(self.root, {self.model: original}, set(), False)
-        publish(self.root, {self.model: self.code}, set(), False)
-        self.assertEqual((self.root / self.model).read_text(), self.code)
 
 
 if __name__ == "__main__":

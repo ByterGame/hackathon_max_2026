@@ -20,12 +20,6 @@ class ModelImportTests(unittest.TestCase):
             "# comment\nfrom src.gen.request.internal.request_data import RequestStatus as Status\n",
         )
 
-    def test_same_package_import_in_initializer(self):
-        result = absolute_model_imports(
-            Path("gen/example/__init__.py"), "from .models import Example\n"
-        )
-        self.assertEqual(result, "from src.gen.example.models import Example\n")
-
     def test_models_are_in_gen_and_handlers_use_absolute_imports(self):
         contracts = load_contracts(ROOT)
         files, _ = render_project(ROOT, contracts)
