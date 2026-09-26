@@ -5,7 +5,7 @@ services:
       BOT_TOKEN: "${BOT_TOKEN:-}"
       PORT: "${PORT:-8000}"
     ports:
-      - "${PORT:-8000}:${PORT:-8000}"
+      - "127.0.0.1:${PORT:-8000}:${PORT:-8000}"
     healthcheck:
       test: ["CMD", "python", "-c", "import os, urllib.request; urllib.request.urlopen(f\"http://127.0.0.1:{os.environ['PORT']}/service/health\")"]
       interval: 10s
