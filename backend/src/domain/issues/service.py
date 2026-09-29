@@ -224,7 +224,11 @@ async def list_visible_cards(
     )
     if not include_closed:
         query = query.where(IssueCard.status != "closed")
-    cards = (await session.scalars(query.order_by(IssueCard.created_at.desc()))).all()
+    cards = (
+        await session.scalars(
+            query.order_by(IssueCard.created_at.desc(), IssueCard.id.desc())
+        )
+    ).all()
     if staff is not None:
         return list(cards)
     return [card for card in cards if await _can_view(session, actor, card)]
