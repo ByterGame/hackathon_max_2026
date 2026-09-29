@@ -299,6 +299,9 @@ async def decide_house_request(
             created_at=utcnow(),
         )
         session.add(house)
+        # The request already exists, so its UPDATE can otherwise be flushed
+        # before the new house INSERT despite the foreign key between them.
+        await session.flush([house])
         request.company_id = company_id
         request.resolved_house_id = house.id
     request.status = "closed"
