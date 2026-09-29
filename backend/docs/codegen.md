@@ -44,8 +44,8 @@ OpenAPI собирается в `openapi.yaml` в корне `backend/`, вру�
 Ниже пример формата, а не утверждённый предметный API:
 
 ```yaml
-# docs/example_codegen/api/get_request.yaml
-path: /example_codegen/client/get_request
+# docs/sample/api/get_request.yaml
+path: /sample/client/get_request
 method: get
 summary: Получить заявку
 description: Возвращает заявку по идентификатору.
@@ -90,11 +90,11 @@ schemas:
 ```
 
 В примере GET выше входной `request_id` передаётся в URL:
-`/example_codegen/client/get_request?request_id=123`. Тела запроса там нет.
+`/sample/client/get_request?request_id=123`. Тела запроса там нет.
 Для передачи JSON в теле рассмотрим отдельную POST-ручку:
 
 ```yaml
-path: /example_codegen/client/create_request
+path: /sample/client/create_request
 method: post
 requestBody:
   required: true
@@ -155,7 +155,7 @@ FastAPI прочитает JSON и проверит данные до вызов
 В одном файле можно описать модели, перечисления и ссылки между ними.
 
 ```yaml
-# docs/example_codegen/internal/request_data.yaml
+# docs/sample/internal/request_data.yaml
 schemas:
   RequestStatus:
     type: string
@@ -170,7 +170,7 @@ schemas:
         $ref: '#/schemas/RequestStatus'
 ```
 
-Результат: один модуль `src/gen/example_codegen/internal/request_data.py` с классами
+Результат: один модуль `src/gen/sample/internal/request_data.py` с классами
 `RequestStatus` и `RequestData`. Имя файла не обязано совпадать с именем
 одной из схем: например, `models.yaml` даст модуль `models.py`.
 Вложенные анонимные структуры могут образовать вспомогательные классы
@@ -190,11 +190,11 @@ schemas:
 Для API домен — первый сегмент URL, остальные сегменты идут после `api/`.
 Для внутренних структур домен берётся из `docs/<domain_name>/internal/`.
 
-Для пути `/example_codegen/client/get_request` создаются:
+Для условного пути `/sample/client/get_request` создаются:
 
-- `src/views/example_codegen/client/get_request.py`: асинхронная функция;
+- `src/views/sample/client/get_request.py`: асинхронная функция;
   создаётся только при отсутствии файла. Входные модели подключены в сигнатуре.
-- `src/gen/example_codegen/api/client/get_request.py`: модели запроса, query-параметров,
+- `src/gen/sample/api/client/get_request.py`: модели запроса, query-параметров,
   успешных ответов и ошибок. Этот файл полностью генерируемый.
 - `src/views/_generated_router.py`: подключает функции обработчиков
   к FastAPI, устанавливает путь, метод, модели ответов и описания.
@@ -204,12 +204,12 @@ schemas:
 проверяется на наличие ожидаемой async-функции и входных моделей в сигнатуре.
 
 Обработчик использует абсолютный импорт
-`from src.gen.example_codegen.api.client import get_request as models`.
+`from src.gen.sample.api.client import get_request as models`.
 Между генерируемыми моделями тоже используются абсолютные импорты из `src.gen`.
 Запуск приложения и тестов выполняется из `backend/`, где доступен пакет `src`.
 Сервис импортирует внутренние
 модели, например
-`from src.gen.example_codegen.internal.request_data import RequestData`,
+`from src.gen.sample.internal.request_data import RequestData`,
 но не HTTP-модели. Преобразование внутреннего результата в HTTP-ответ выполняет
 обработчик. Общий код сервиса доступен и HTTP-ручкам, и обработчикам бота.
 

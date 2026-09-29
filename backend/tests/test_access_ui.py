@@ -23,6 +23,24 @@ class AccessUiTests(unittest.IsolatedAsyncioTestCase):
         dialog = SimpleNamespace(flow_kind="issue_create", step="description")
         self.assertIsNone(await handle_text(self.session, self.actor, dialog, "лифт"))
 
+    async def test_admin_can_open_saved_resident_buttons_without_staff_assignment(self) -> None:
+        self.actor.kind = "admin"
+        company_id = uuid4()
+        with (
+            patch("src.bot.handlers.access_ui.require_staff", new_callable=AsyncMock) as require,
+            patch("src.bot.handlers.access_ui.queries.list_residents", new_callable=AsyncMock) as residents,
+            patch("src.bot.handlers.access_ui.queries.list_company_offers", new_callable=AsyncMock) as offers,
+        ):
+            require.return_value = None
+            residents.return_value = []
+            offers.return_value = []
+            people = await handle_action(self.session, self.actor, f"a:people:{company_id}")
+            pending = await handle_action(self.session, self.actor, f"a:company_offers:{company_id}")
+
+        for reply in (people, pending):
+            self.assertIsNotNone(reply)
+            self.assertIn("Предложить доступ", [button.text for row in reply.buttons for button in row])
+
     async def test_house_search_returns_address_buttons_without_uuid_in_text(
         self,
     ) -> None:

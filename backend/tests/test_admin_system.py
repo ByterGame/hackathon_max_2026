@@ -1,0 +1,403 @@
+"""System-editor boundaries: typed patches, identity safety, and durable ledger."""
+
+import unittest
+from contextlib import nullcontext
+from datetime import UTC, datetime
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock, patch
+from uuid import uuid4
+
+from src.db.models import AdminOperation, AuditEvent, File, IssueSupport, ResidentGrant, StaffAssignment, User
+from src.domain.access.rules import AccessRuleError
+from src.domain.admin.system import (
+    _check_etag,
+    _item,
+    _model,
+    _parse_row_key,
+    _registry,
+    _schema_entry,
+    _soft_delete,
+    _validate_user_change,
+    system_delete,
+    system_patch,
+)
+from src.main import create_app
+
+
+def user(kind: str = "admin") -> User:
+    return User(
+        id=uuid4(),
+        max_user_id="12345",
+        phone_number="79991234567",
+        phone_verified_at=datetime.now(UTC),
+        kind=kind,
+        version=1,
+    )
+
+
+class SystemShapeTests(unittest.TestCase):
+    def test_registry_covers_data_and_both_journals(self) -> None:
+        entities = _registry()
+        self.assertIn("identity.users", entities)
+        self.assertIn("system.audit_events", entities)
+        self.assertIn("issues.supports", entities)
+        self.assertIn("system.bot_dialogs", entities)
+        self.assertIn("system.admin_operations", entities)
+        self.assertIs(_model("system.audit_events"), AuditEvent)
+        self.assertIs(_model("system.admin_operations"), AdminOperation)
+        ledger_schema = _schema_entry("system.admin_operations", AdminOperation)
+        self.assertEqual(ledger_schema["delete_modes"], ["hard"])
+        self.assertTrue(next(field for field in ledger_schema["fields"] if field["name"] == "reason")["editable"])
+
+    def test_composite_key_and_clear_only_schema(self) -> None:
+        first, second = uuid4(), uuid4()
+        self.assertEqual(
+            _parse_row_key(IssueSupport, f"{first}:{second}"),
+            (first, second),
+        )
+        with self.assertRaises(AccessRuleError):
+            _parse_row_key(IssueSupport, str(first))
+        fields = _schema_entry("identity.users", User)["fields"]
+        verified = next(item for item in fields if item["name"] == "phone_verified_at")
+        self.assertTrue(verified["clear_only"])
+        self.assertTrue(verified["editable"])
+
+    def test_file_storage_key_and_primary_key_are_not_editable(self) -> None:
+        fields = _schema_entry("system.files", File)["fields"]
+        by_name = {item["name"]: item for item in fields}
+        self.assertFalse(by_name["id"]["editable"])
+        self.assertFalse(by_name["storage_key"]["editable"])
+        self.assertFalse(by_name["sha256"]["editable"])
+        self.assertEqual(_schema_entry("system.files", File)["delete_mode"], "soft")
+        self.assertEqual(_schema_entry("system.files", File)["delete_modes"], ["soft"])
+
+    def test_system_routes_are_in_openapi(self) -> None:
+        paths = create_app().openapi()["paths"]
+        for action in ("schema", "list", "get", "operations", "patch", "delete"):
+            self.assertIn(f"/admin/system/{action}", paths)
+
+    def test_stale_etag_rejected(self) -> None:
+        row = user("unassigned")
+        with self.assertRaises(AccessRuleError) as caught:
+            _check_etag(row, "0" * 64)
+        self.assertEqual(caught.exception.code, "stale_record")
+
+
+class SystemMutationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_admin_can_correct_audit_event_with_database_guard_enabled(self) -> None:
+        admin = user()
+        row = AuditEvent(
+            id=uuid4(), entity_kind="user", entity_id=uuid4(),
+            action="created", actor_user_id=admin.id,
+        )
+        session = SimpleNamespace(
+            execute=AsyncMock(), flush=AsyncMock(), refresh=AsyncMock(),
+            commit=AsyncMock(), add=Mock(), no_autoflush=nullcontext(),
+        )
+        with patch("src.domain.admin.system.require_admin", new_callable=AsyncMock, return_value=admin), patch(
+            "src.domain.admin.system._load_row", new_callable=AsyncMock, return_value=row
+        ):
+            result = await system_patch(
+                session, admin, "system.audit_events", str(row.id),
+                _item(row)["etag"], "Исправлено ошибочное действие",
+                {"action": "updated"},
+            )
+        self.assertEqual(result["item"]["data"]["action"], "updated")
+        self.assertEqual(session.execute.await_count, 2)
+        self.assertIn("set_config", str(session.execute.await_args_list[1].args[0]))
+        self.assertEqual(session.add.call_args.args[0].entity_key, "system.audit_events")
+
+    async def test_admin_can_correct_journal_entry_and_correction_is_logged(self) -> None:
+        admin = user()
+        row = AdminOperation(
+            id=uuid4(), entity_key="identity.users", row_key=str(uuid4()),
+            operation="patch", actor_user_id=admin.id, reason="Опечатка в причине",
+            expected_etag="0" * 64, before_data={"kind": "support"},
+            after_data={"kind": "admin"},
+        )
+        session = SimpleNamespace(
+            execute=AsyncMock(), flush=AsyncMock(), refresh=AsyncMock(),
+            commit=AsyncMock(), add=Mock(), no_autoflush=nullcontext(),
+        )
+        with patch("src.domain.admin.system.require_admin", new_callable=AsyncMock, return_value=admin), patch(
+            "src.domain.admin.system._load_row", new_callable=AsyncMock, return_value=row
+        ):
+            result = await system_patch(
+                session, admin, "system.admin_operations", str(row.id),
+                _item(row)["etag"], "Уточнена причина исправления журнала",
+                {"reason": "Проверенная причина"},
+            )
+        self.assertEqual(result["item"]["data"]["reason"], "Проверенная причина")
+        self.assertEqual(session.execute.await_count, 2)
+        self.assertIn("set_config", str(session.execute.await_args_list[1].args[0]))
+        correction = session.add.call_args.args[0]
+        self.assertEqual(correction.entity_key, "system.admin_operations")
+        self.assertEqual(correction.row_key, str(row.id))
+        self.assertEqual(correction.operation, "patch")
+        session.commit.assert_awaited_once()
+
+    async def test_admin_can_delete_journal_entry_and_deletion_is_logged(self) -> None:
+        admin = user()
+        row = AdminOperation(
+            id=uuid4(), entity_key="identity.users", row_key=str(uuid4()),
+            operation="patch", actor_user_id=admin.id, reason="Ошибочная запись",
+            expected_etag="0" * 64, before_data={}, after_data={},
+        )
+        session = SimpleNamespace(
+            execute=AsyncMock(), delete=AsyncMock(), flush=AsyncMock(),
+            commit=AsyncMock(), add=Mock(),
+        )
+        with patch("src.domain.admin.system.require_admin", new_callable=AsyncMock, return_value=admin), patch(
+            "src.domain.admin.system._load_row", new_callable=AsyncMock, return_value=row
+        ), patch(
+            "src.domain.admin.system._dependencies", new_callable=AsyncMock, return_value=[]
+        ):
+            result = await system_delete(
+                session, admin, "system.admin_operations", str(row.id),
+                _item(row)["etag"], "Удалена ошибочная запись журнала", "hard",
+            )
+        self.assertEqual(result["mode"], "hard")
+        self.assertEqual(session.execute.await_count, 2)
+        self.assertIn("set_config", str(session.execute.await_args_list[1].args[0]))
+        session.delete.assert_awaited_once_with(row)
+        deletion = session.add.call_args.args[0]
+        self.assertEqual(deletion.entity_key, "system.admin_operations")
+        self.assertEqual(deletion.row_key, str(row.id))
+        self.assertEqual(deletion.operation, "hard_delete")
+        session.commit.assert_awaited_once()
+
+    async def test_phone_change_clears_verification(self) -> None:
+        row = user("support")
+        session = SimpleNamespace(scalar=AsyncMock(return_value=0))
+        values = await _validate_user_change(
+            session, row, {"phone_number": "+7 (999) 000-00-00"}, actor_id=uuid4()
+        )
+        self.assertEqual(values["phone_number"], "79990000000")
+        self.assertIsNone(values["phone_verified_at"])
+
+    async def test_max_id_change_clears_phone_and_cannot_target_self(self) -> None:
+        row = user("admin")
+        session = SimpleNamespace(scalar=AsyncMock(return_value=0))
+        with self.assertRaises(AccessRuleError) as caught:
+            await _validate_user_change(
+                session, row, {"max_user_id": "54321"}, actor_id=row.id
+            )
+        self.assertEqual(caught.exception.code, "self_identity_change")
+        values = await _validate_user_change(
+            session, row, {"max_user_id": "54321"}, actor_id=uuid4()
+        )
+        self.assertIsNone(values["phone_number"])
+        self.assertIsNone(values["phone_verified_at"])
+
+    async def test_verification_cannot_be_forged(self) -> None:
+        row = user("unassigned")
+        with self.assertRaises(AccessRuleError) as caught:
+            await _validate_user_change(
+                SimpleNamespace(), row, {"phone_verified_at": datetime.now(UTC)}, actor_id=uuid4()
+            )
+        self.assertEqual(caught.exception.code, "verification_forbidden")
+
+    async def test_last_admin_cannot_be_demoted_by_system_patch(self) -> None:
+        row = user("admin")
+        session = SimpleNamespace(scalar=AsyncMock(return_value=1))
+        with self.assertRaises(AccessRuleError) as caught:
+            await _validate_user_change(
+                session, row, {"kind": "unassigned"}, actor_id=uuid4()
+            )
+        self.assertEqual(caught.exception.code, "last_admin")
+
+    async def test_admin_requires_login_id(self) -> None:
+        row = user("unassigned")
+        row.max_user_id = None
+        session = SimpleNamespace(scalar=AsyncMock(return_value=0))
+        with self.assertRaises(AccessRuleError) as caught:
+            await _validate_user_change(session, row, {"kind": "admin"}, actor_id=uuid4())
+        self.assertEqual(caught.exception.code, "admin_login_required")
+
+    async def test_patch_writes_ledger_in_same_session(self) -> None:
+        row = user("support")
+        admin = user("admin")
+        session = SimpleNamespace(
+            execute=AsyncMock(),
+            scalars=AsyncMock(return_value=SimpleNamespace(all=Mock(return_value=[]))),
+            scalar=AsyncMock(return_value=0),
+            flush=AsyncMock(),
+            refresh=AsyncMock(),
+            commit=AsyncMock(),
+            add=Mock(),
+            no_autoflush=nullcontext(),
+        )
+        with patch("src.domain.admin.system.require_admin", new_callable=AsyncMock) as guard, patch(
+            "src.domain.admin.system._load_row", new_callable=AsyncMock
+        ) as load:
+            guard.return_value = admin
+            load.return_value = row
+            result = await system_patch(
+                session,
+                admin,
+                "identity.users",
+                str(row.id),
+                _item(row)["etag"],
+                "Исправлен номер после проверки",
+                {"phone_number": "79990000000"},
+            )
+        self.assertEqual(result["item"]["data"]["phone_number"], "79990000000")
+        self.assertIsNone(row.phone_verified_at)
+        added = [call.args[0] for call in session.add.call_args_list]
+        self.assertEqual(len(added), 1)
+        self.assertIsInstance(added[0], AdminOperation)
+        self.assertEqual(added[0].operation, "patch")
+        session.commit.assert_awaited_once()
+
+    async def test_hard_delete_refuses_dependencies_without_deleting(self) -> None:
+        row = AuditEvent(
+            id=uuid4(), entity_kind="user", entity_id=uuid4(), action="created"
+        )
+        admin = user()
+        session = SimpleNamespace(delete=AsyncMock(), execute=AsyncMock())
+        with patch("src.domain.admin.system.require_admin", new_callable=AsyncMock) as guard, patch(
+            "src.domain.admin.system._load_row", new_callable=AsyncMock
+        ) as load, patch(
+            "src.domain.admin.system._dependencies", new_callable=AsyncMock
+        ) as dependencies:
+            guard.return_value = admin
+            load.return_value = row
+            dependencies.return_value = [{"entity": "system.notifications", "field": "subject_id", "count": 1}]
+            with self.assertRaises(AccessRuleError) as caught:
+                await system_delete(
+                    session, admin, "system.audit_events", str(row.id), _item(row)["etag"],
+                    "Исправление ошибочной записи", "hard"
+                )
+        self.assertEqual(caught.exception.code, "delete_blocked")
+        session.delete.assert_not_awaited()
+
+    async def test_file_cannot_be_hard_deleted_without_bytes_cleanup(self) -> None:
+        row = File(
+            id=uuid4(), storage_key="private/a", uploader_user_id=uuid4(),
+            original_name="a.pdf", mime_type="application/pdf", size_bytes=1,
+            sha256="0" * 64, state="ready",
+        )
+        admin = user()
+        with patch("src.domain.admin.system.require_admin", new_callable=AsyncMock) as guard, patch(
+            "src.domain.admin.system._load_row", new_callable=AsyncMock
+        ) as load:
+            guard.return_value = admin
+            load.return_value = row
+            with self.assertRaises(AccessRuleError) as caught:
+                await system_delete(
+                    SimpleNamespace(), admin, "system.files", str(row.id), _item(row)["etag"],
+                    "Удалить вложение навсегда", "hard"
+                )
+        self.assertEqual(caught.exception.code, "file_bytes_retained")
+
+    async def test_soft_staff_revocation_drops_last_employee_role(self) -> None:
+        employee = user("employee")
+        assignment = StaffAssignment(
+            id=uuid4(), company_id=uuid4(), phone_number=employee.phone_number,
+            user_id=employee.id, can_manage_staff=True,
+            can_manage_residents=False, can_manage_issues=False,
+            granted_by=uuid4(), version=1,
+        )
+        session = SimpleNamespace(scalar=AsyncMock(side_effect=[employee, None]))
+        side_effects = await _soft_delete(
+            session, assignment, "identity.staff_assignments", user(), "Отзыв доступа"
+        )
+        self.assertIsNotNone(assignment.revoked_at)
+        self.assertEqual(employee.kind, "unassigned")
+        self.assertEqual(side_effects[0]["after_kind"], "unassigned")
+
+    async def test_staff_transfer_reconciles_previous_and_new_user(self) -> None:
+        old_user_id, new_user_id = uuid4(), uuid4()
+        assignment = StaffAssignment(
+            id=uuid4(), company_id=uuid4(), phone_number="79991234567",
+            user_id=old_user_id, can_manage_staff=False,
+            can_manage_residents=False, can_manage_issues=False,
+            granted_by=uuid4(), version=1,
+        )
+        admin = user()
+        session = SimpleNamespace(
+            execute=AsyncMock(), flush=AsyncMock(), refresh=AsyncMock(),
+            commit=AsyncMock(), add=Mock(), no_autoflush=nullcontext(),
+        )
+        with patch("src.domain.admin.system.require_admin", new_callable=AsyncMock, return_value=admin), patch(
+            "src.domain.admin.system._load_row", new_callable=AsyncMock, return_value=assignment
+        ), patch(
+            "src.domain.admin.system._reconcile_staff_role", new_callable=AsyncMock
+        ) as reconcile, patch(
+            "src.domain.admin.system._validate_staff_change", new_callable=AsyncMock
+        ):
+            await system_patch(
+                session, admin, "identity.staff_assignments", str(assignment.id),
+                _item(assignment)["etag"], "Исправлена привязка сотрудника",
+                {"user_id": str(new_user_id), "phone_number": "79998887766"},
+            )
+        self.assertEqual(reconcile.await_count, 2)
+        self.assertEqual(reconcile.await_args_list[0].kwargs, {
+            "user_id": old_user_id, "force_inactive": True,
+        })
+        self.assertEqual(reconcile.await_args_list[1].kwargs, {})
+
+    async def test_resident_transfer_reconciles_previous_and_new_user(self) -> None:
+        old_user_id, new_user_id = uuid4(), uuid4()
+        grant = ResidentGrant(
+            id=uuid4(), user_id=old_user_id, apartment_id=uuid4(),
+            valid_from=datetime.now(UTC), source_request_id=uuid4(),
+            granted_by=uuid4(),
+        )
+        admin = user()
+        session = SimpleNamespace(
+            execute=AsyncMock(), flush=AsyncMock(), refresh=AsyncMock(),
+            commit=AsyncMock(), add=Mock(), no_autoflush=nullcontext(),
+        )
+        with patch("src.domain.admin.system.require_admin", new_callable=AsyncMock, return_value=admin), patch(
+            "src.domain.admin.system._load_row", new_callable=AsyncMock, return_value=grant
+        ), patch(
+            "src.domain.admin.system._reconcile_resident_role", new_callable=AsyncMock
+        ) as reconcile:
+            await system_patch(
+                session, admin, "access.resident_grants", str(grant.id),
+                _item(grant)["etag"], "Исправлена привязка жильца",
+                {"user_id": str(new_user_id)},
+            )
+        self.assertEqual(reconcile.await_count, 2)
+        self.assertEqual(reconcile.await_args_list[0].kwargs, {
+            "user_id": old_user_id, "force_inactive": True,
+        })
+        self.assertEqual(reconcile.await_args_list[1].kwargs, {})
+
+    async def test_hard_staff_delete_records_role_change(self) -> None:
+        employee = user("employee")
+        assignment = StaffAssignment(
+            id=uuid4(), company_id=uuid4(), phone_number=employee.phone_number,
+            user_id=employee.id, can_manage_staff=False,
+            can_manage_residents=False, can_manage_issues=False,
+            granted_by=uuid4(), version=1,
+        )
+        admin = user()
+        session = SimpleNamespace(
+            execute=AsyncMock(), flush=AsyncMock(), delete=AsyncMock(),
+            commit=AsyncMock(), add=Mock(),
+        )
+        side_effect = {
+            "user_id": str(employee.id), "before_kind": "employee",
+            "after_kind": "unassigned",
+        }
+        with patch("src.domain.admin.system.require_admin", new_callable=AsyncMock, return_value=admin), patch(
+            "src.domain.admin.system._load_row", new_callable=AsyncMock, return_value=assignment
+        ), patch(
+            "src.domain.admin.system._dependencies", new_callable=AsyncMock, return_value=[]
+        ), patch(
+            "src.domain.admin.system._reconcile_staff_role", new_callable=AsyncMock, return_value=side_effect
+        ):
+            await system_delete(
+                session, admin, "identity.staff_assignments", str(assignment.id),
+                _item(assignment)["etag"], "Удалено ошибочное назначение", "hard",
+            )
+        self.assertEqual(session.add.call_args.args[0].after_data, {
+            "_side_effects": [side_effect],
+        })
+        session.delete.assert_awaited_once()
+
+
+if __name__ == "__main__":
+    unittest.main()

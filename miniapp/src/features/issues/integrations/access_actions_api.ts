@@ -6,6 +6,7 @@ export type AccessRequestStatus = "open" | "reviewing" | "needs_info" | "closed"
 export interface AccessDiscussionMessage {
   id: string;
   author_user_id: string;
+  author_kind?: string;
   text: string;
   created_at: string;
 }
@@ -18,6 +19,9 @@ export interface AccessRequestDetail {
   decision_note: string | null;
   cancel_requested_by: string | null;
   applicant_user_id?: string | null;
+  phone_number?: string;
+  registration_request_id?: string | null;
+  company_id?: string | null;
   discussion: AccessDiscussionMessage[];
   created_at: string;
   updated_at: string;
@@ -51,6 +55,35 @@ export function getAccessRequest(kind: AccessRequestKind, id: string): Promise<A
 export function listCompanyRegistrationRequests(): Promise<AccessRequestDetail[]> {
   return requestJson<{ items: AccessRequestDetail[] }>("/access/list_requests?request_kind=company_registration")
     .then((response) => response.items);
+}
+
+export interface AccessRequestsPage {
+  items: AccessRequestDetail[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export function listAccessRequestsPage(kind: AccessRequestKind | "mine", offset = 0, limit = 20, houseId?: string, supportView = false, companyId?: string): Promise<AccessRequestsPage> {
+  const query = new URLSearchParams({ request_kind: kind, offset: String(offset), limit: String(limit) });
+  if (houseId) query.set("house_id", houseId);
+  if (supportView) query.set("support_view", "true");
+  if (companyId) query.set("company_id", companyId);
+  return requestJson<AccessRequestsPage>(`/access/list_requests?${query}`);
+}
+
+export function decideCompanyRegistration(id: string, outcome: "approved" | "rejected", decisionNote: string, displayName?: string): Promise<void> {
+  return post("/access/decide_company_registration", {
+    request_id: id, outcome, decision_note: decisionNote.trim(), display_name: outcome === "approved" ? displayName?.trim() || null : null,
+  });
+}
+
+export function decideHouseAddition(id: string, outcome: "approved" | "rejected", decisionNote: string, addressKey?: string, entranceCount?: number): Promise<void> {
+  return post("/access/decide_house_request", {
+    request_id: id, outcome, decision_note: decisionNote.trim(),
+    address_key: outcome === "approved" ? addressKey?.trim() || null : null,
+    entrance_count: outcome === "approved" ? entranceCount ?? null : null,
+  });
 }
 
 export function addAccessDiscussionMessage(kind: AccessRequestKind, id: string, text: string): Promise<void> {

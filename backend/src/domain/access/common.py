@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import BigInteger, bindparam, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +14,17 @@ from src.domain.access.rules import AccessRuleError, require_verified_phone
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+async def lock_phone_role(session: AsyncSession, normalized_phone: str) -> None:
+    """Serialize cross-role invitations for a phone until transaction end."""
+    await session.execute(
+        select(
+            func.pg_advisory_xact_lock(
+                bindparam("phone_role_key", int(normalized_phone), type_=BigInteger)
+            )
+        )
+    )
 
 
 async def require_row(
@@ -48,9 +59,9 @@ async def bind_staff_by_verified_phone(
     )
     if locked_user is None:
         raise AccessRuleError(404, "user_not_found", "Аккаунт не найден")
-    if user.phone_number is None or user.phone_verified_at is None:
+    if locked_user.phone_number is None or locked_user.phone_verified_at is None:
         return []
-    phone = require_verified_phone(user)
+    phone = require_verified_phone(locked_user)
     assignments = list(
         (
             await session.scalars(
@@ -64,16 +75,16 @@ async def bind_staff_by_verified_phone(
             )
         ).all()
     )
-    if user.kind not in {"unassigned", "employee"}:
-        raise AccessRuleError(
-            403, "role_conflict", "Житель не может получить роль сотрудника УК"
-        )
     if not assignments:
         return []
+    if locked_user.kind not in {"unassigned", "employee"}:
+        raise AccessRuleError(
+            403, "role_conflict", "Этот аккаунт не может получить роль сотрудника УК"
+        )
     for assignment in assignments:
-        assignment.user_id = user.id
+        assignment.user_id = locked_user.id
         assignment.bound_at = utcnow()
-    user.kind = "employee"
+    locked_user.kind = "employee"
     await session.flush()
     return assignments
 
@@ -83,7 +94,10 @@ async def require_staff(
     actor: User,
     company_id: UUID,
     permission: str | None = None,
-) -> StaffAssignment:
+) -> StaffAssignment | None:
+    # Администратор управляет всеми УК, но не становится сотрудником каждой из них.
+    if actor.kind == "admin":
+        return None
     if actor.kind not in {"unassigned", "employee"}:
         raise AccessRuleError(403, "staff_required", "Требуется доступ сотрудника УК")
     await bind_staff_by_verified_phone(session, actor)
@@ -110,9 +124,11 @@ async def require_staff(
 
 
 def require_support(actor: User) -> None:
-    if actor.kind != "support":
+    if actor.kind not in {"support", "admin"}:
         raise AccessRuleError(
-            403, "support_required", "Действие доступно только поддержке"
+            403,
+            "support_required",
+            "Требуется доступ поддержки или администратора",
         )
 
 

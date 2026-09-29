@@ -2,7 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import APIRouter, FastAPI, Request
+from fastapi import FastAPI, Request
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException
@@ -12,11 +12,12 @@ from .core.logging import safe_exception_message
 from .db.session import create_database_engine, create_session_factory
 from .http_logging import HTTPLoggingMiddleware
 from .views import router
+from .views.admin import router as admin_router
+from .views.admin import system_router
 from .views.files import router as files_router
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 MINIAPP_DIST = REPOSITORY_ROOT / "miniapp" / "dist"
-LEGACY_PATH_PREFIXES = ("/images/", "/example_codegen/")
 logger = logging.getLogger(__name__)
 
 
@@ -66,12 +67,9 @@ def create_app() -> FastAPI:
             request.state.http_exception = error
         return await http_exception_handler(request, error)
 
-    active_routes = [
-        route
-        for route in router.routes
-        if not route.path.startswith(LEGACY_PATH_PREFIXES)
-    ]
-    app.include_router(APIRouter(routes=active_routes))
+    app.include_router(router)
+    app.include_router(admin_router)
+    app.include_router(system_router)
     app.include_router(files_router)
 
     if MINIAPP_DIST.is_dir():

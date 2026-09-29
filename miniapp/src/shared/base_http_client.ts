@@ -1,5 +1,12 @@
 import { getSignedMaxInitData } from "../integrations/max/bridge";
 
+export class HttpError extends Error {
+  constructor(public readonly status: number, message: string) {
+    super(message);
+    this.name = "HttpError";
+  }
+}
+
 export async function requestResponse(path: string, init: RequestInit = {}): Promise<Response> {
   const url = new URL(path, window.location.origin);
   if (url.origin !== window.location.origin) throw new Error("Запросы разрешены только к серверу приложения");
@@ -21,7 +28,7 @@ export async function requestResponse(path: string, init: RequestInit = {}): Pro
   if (!response.ok) {
     const body = await response.json().catch(() => ({})) as { detail?: string | { message?: string }; message?: string };
     const detail = typeof body.detail === "string" ? body.detail : body.detail?.message;
-    throw new Error(body.message ?? detail ?? `Ошибка сервера: ${response.status}`);
+    throw new HttpError(response.status, body.message ?? detail ?? `Ошибка сервера: ${response.status}`);
   }
   return response;
 }

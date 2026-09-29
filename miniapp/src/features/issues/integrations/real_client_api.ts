@@ -136,7 +136,6 @@ function issueEventLabel(event: WireDetail["history"][number]): string {
   if (event.status === "closed") return "Проблема закрыта";
   if (event.status) return issueStatusLabels[event.status] ?? "Статус обновлён";
   if (event.action.includes("support")) return "Проблему поддержали";
-  if (event.action.includes("comment")) return "Добавлен комментарий";
   return "Карточка обновлена";
 }
 
@@ -150,7 +149,7 @@ function toIssue(detail: WireDetail, user: CurrentUser): Issue {
     body: item.body,
     createdAt: item.created_at,
   }));
-  const events: IssueEvent[] = detail.history.map((item) => ({
+  const events: IssueEvent[] = detail.history.filter((item) => item.action !== "comment_added").map((item) => ({
     id: item.id,
     label: issueEventLabel(item),
     note: item.note ?? undefined,

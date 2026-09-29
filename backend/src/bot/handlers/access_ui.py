@@ -1304,13 +1304,16 @@ async def handle_action(
     if action == "people" and len(parts) == 3:
         company_id = _uuid(parts[2])
         assignment = await require_staff(session, actor, company_id)
+        can_manage_residents = actor.kind == "admin" or (
+            assignment is not None and assignment.can_manage_residents
+        )
         items = await queries.list_residents(session, actor, company_id=company_id)
         if not items:
             return UiReply(
                 "Выданных доступов пока нет.",
                 (
                     [_button("Предложить доступ", f"a:offer_new:{company_id}")]
-                    if assignment.can_manage_residents
+                    if can_manage_residents
                     else []
                 ),
             )
@@ -1322,13 +1325,16 @@ async def handle_action(
                 f"• {label} — {ACCESS_STATE.get(item['status'], item['status'])}"
             )
             buttons.append(_button(_short(label), f"a:grant:{item['grant_id']}"))
-        if assignment.can_manage_residents:
+        if can_manage_residents:
             buttons.append(_button("Предложить доступ", f"a:offer_new:{company_id}"))
         return UiReply("\n".join(lines)[:3300], buttons)
 
     if action == "company_offers" and len(parts) == 3:
         company_id = _uuid(parts[2])
         assignment = await require_staff(session, actor, company_id)
+        can_manage_residents = actor.kind == "admin" or (
+            assignment is not None and assignment.can_manage_residents
+        )
         offers = await queries.list_company_offers(
             session, actor, company_id=company_id
         )
@@ -1337,7 +1343,7 @@ async def handle_action(
                 "Предложений доступа пока нет.",
                 (
                     [_button("Предложить доступ", f"a:offer_new:{company_id}")]
-                    if assignment.can_manage_residents
+                    if can_manage_residents
                     else []
                 ),
             )
@@ -1350,7 +1356,7 @@ async def handle_action(
             )
         buttons = (
             [_button("Предложить доступ", f"a:offer_new:{company_id}")]
-            if assignment.can_manage_residents
+            if can_manage_residents
             else []
         )
         return UiReply("\n".join(lines)[:3400], buttons)
@@ -1424,13 +1430,16 @@ async def handle_action(
         if house is None:
             raise ValueError("Дом доступа не найден.")
         assignment = await require_staff(session, actor, house.company_id)
+        can_manage_residents = actor.kind == "admin" or (
+            assignment is not None and assignment.can_manage_residents
+        )
         text = (
             f"Доступ: {house.address_display}, подъезд {apartment.entrance_number}, "
             f"квартира {apartment.apartment_number}. "
             + (f"До {grant.valid_to.isoformat()}." if grant.valid_to else "Бессрочный.")
         )
         buttons = []
-        if grant.revoked_at is None and assignment.can_manage_residents:
+        if grant.revoked_at is None and can_manage_residents:
             if grant.valid_to is not None:
                 buttons.append(_button("Продлить", f"a:grant_change:{grant.id}:extend"))
             buttons.append(_button("Отозвать", f"a:grant_change:{grant.id}:revoke"))

@@ -89,6 +89,29 @@ class AuditEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class AdminOperation(Base):
+    """Append-only record of privileged system-editor mutations."""
+
+    __tablename__ = "admin_operations"
+    __table_args__ = (
+        Index("ix_admin_operations_entity_created", "entity_key", "row_key", "created_at"),
+        CheckConstraint("operation IN ('patch', 'soft_delete', 'hard_delete')", name="operation_allowed"),
+        CheckConstraint("length(btrim(reason)) >= 5", name="reason_required"),
+        {"schema": "system"},
+    )
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    entity_key: Mapped[str] = mapped_column(Text, nullable=False)
+    row_key: Mapped[str] = mapped_column(Text, nullable=False)
+    operation: Mapped[str] = mapped_column(Text, nullable=False)
+    actor_user_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("identity.users.id"), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    expected_etag: Mapped[str] = mapped_column(Text, nullable=False)
+    before_data: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    after_data: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class CommandReceipt(Base):
     __tablename__ = "command_receipts"
     __table_args__ = (

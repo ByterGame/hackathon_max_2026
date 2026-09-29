@@ -104,6 +104,14 @@ def _paged_text(body: str, requested: int, command: str) -> str:
     )
 
 
+def _participant_label(
+    actor_id: UUID, author_id: UUID, *, official: bool = False
+) -> str:
+    if actor_id == author_id:
+        return "Вы"
+    return "УК" if official else "Житель"
+
+
 def _parts(value: str, *, count: int) -> list[str]:
     parts = [part.strip() for part in value.split("|", maxsplit=count - 1)]
     if len(parts) < count or any(not part for part in parts[: count - 1]):
@@ -215,12 +223,13 @@ async def _card_text(
     if card.close_result:
         lines.append(f"Результат закрытия: {card.close_result}")
     lines.extend(
-        f"Заявитель {report.author_user_id}: {report.raw_description}"
+        f"{_participant_label(actor.id, report.author_user_id)}: "
+        f"{report.raw_description}"
         for report in reports
     )
     lines.extend(
-        f"{'УК' if message.kind == 'official_uk' else 'Житель'} "
-        f"{message.author_user_id}: {message.body}"
+        f"{_participant_label(actor.id, message.author_user_id, official=message.kind == 'official_uk')}: "
+        f"{message.body}"
         for message in messages
     )
     return _paged_text("\n".join(lines), page, f"/issue {card.id}")
@@ -301,11 +310,13 @@ async def handle_issue_text(
                     .order_by(AuditEvent.created_at, AuditEvent.id)
                 )
             ).all()
+            rows = [row for row in rows if row.action != "comment_added"]
             if not rows:
                 return "История этой карточки пока пуста."
             lines = [f"История карточки {card.id}:"]
             lines.extend(
-                f"{row.created_at:%d.%m %H:%M} · {row.action} · {row.actor_user_id}"
+                f"{row.created_at:%d.%m %H:%M} · {row.action} · "
+                f"{'Вы' if row.actor_user_id == actor.id else 'Участник'}"
                 for row in rows
             )
             return _paged_text("\n".join(lines), page, f"/history {card.id}")

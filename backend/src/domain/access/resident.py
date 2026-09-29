@@ -12,11 +12,14 @@ from src.db.models import (
     ResidentGrant,
     ResidentOffer,
     ResidentRequest,
+    StaffAssignment,
+    SupportInvitation,
     User,
 )
 from src.domain.access.common import (
     audit,
     commit_or_conflict,
+    lock_phone_role,
     require_row,
     require_staff,
     utcnow,
@@ -280,6 +283,26 @@ async def create_resident_offer(
         session.add(apartment)
         await session.flush()
     phone = normalize_phone(phone_number)
+    await lock_phone_role(session, phone)
+    competing_support = await session.scalar(
+        select(SupportInvitation.id).where(
+            SupportInvitation.phone_number == phone,
+            SupportInvitation.accepted_at.is_(None),
+            SupportInvitation.revoked_at.is_(None),
+        )
+    )
+    competing_staff = await session.scalar(
+        select(StaffAssignment.id).where(
+            StaffAssignment.phone_number == phone,
+            StaffAssignment.revoked_at.is_(None),
+        )
+    )
+    if competing_support is not None or competing_staff is not None:
+        raise AccessRuleError(
+            409,
+            "role_conflict",
+            "На этот номер уже выдано приглашение другой роли",
+        )
     target = await session.scalar(select(User).where(User.phone_number == phone))
     if target is not None and target.kind not in {"unassigned", "resident"}:
         raise AccessRuleError(

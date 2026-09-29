@@ -82,6 +82,34 @@ class FileAccessTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(denied.exception.status_code, 404)
             self.assertEqual(session.get.await_count, 1)
 
+    async def test_admin_can_read_staged_file_without_changing_ownership(self) -> None:
+        key = "b" * 64
+        draft_id = uuid4()
+        owner_id = uuid4()
+        file = SimpleNamespace(
+            state="staged",
+            draft_id=draft_id,
+            uploader_user_id=owner_id,
+            storage_key=key,
+        )
+        draft = SimpleNamespace(
+            id=draft_id,
+            owner_user_id=owner_id,
+            expires_at=None,
+            flow_kind="issue_card",
+        )
+        session = SimpleNamespace(get=AsyncMock(side_effect=[file, draft]))
+        actor = SimpleNamespace(id=uuid4(), kind="admin")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = path_for_key(root, key)
+            path.parent.mkdir()
+            path.write_bytes(b"private")
+            found, found_path = await get_file(session, actor, file_id=uuid4(), root=root)
+        self.assertIs(found, file)
+        self.assertEqual(found_path, path)
+        self.assertEqual(file.uploader_user_id, owner_id)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -11,6 +11,7 @@ from src.bot.handlers.issues_text import (
     ISSUE_PAGE_SIZE,
     _page_bounds,
     _page_number,
+    _participant_label,
     _scope,
     _text_chunks,
 )
@@ -298,7 +299,8 @@ async def _card(
     if messages:
         lines.append("Обсуждение:")
         lines.extend(
-            f"{'УК' if message.kind == 'official_uk' else 'Житель'}: {message.body}"
+            f"{_participant_label(actor.id, message.author_user_id, official=message.kind == 'official_uk')}: "
+            f"{message.body}"
             for message in reversed(messages)
         )
     buttons: list[list[Button]] = []
@@ -352,8 +354,9 @@ async def _discussion(
         (
             report.created_at,
             report.id,
-            f"{report.created_at:%d.%m %H:%M} · Дополнение жителя "
-            f"{report.author_user_id}: {report.raw_description}",
+            f"{report.created_at:%d.%m %H:%M} · "
+            f"{'Ваше дополнение' if report.author_user_id == actor.id else 'Дополнение жителя'}: "
+            f"{report.raw_description}",
         )
         for report in reports
     ]
@@ -362,8 +365,8 @@ async def _discussion(
             message.created_at,
             message.id,
             f"{message.created_at:%d.%m %H:%M} · "
-            f"{'УК' if message.kind == 'official_uk' else 'Житель'} "
-            f"{message.author_user_id}: {message.body}",
+            f"{_participant_label(actor.id, message.author_user_id, official=message.kind == 'official_uk')}: "
+            f"{message.body}",
         )
         for message in messages
     )
@@ -387,9 +390,11 @@ async def _audit_history(
             .order_by(AuditEvent.created_at, AuditEvent.id)
         )
     ).all()
+    rows = [row for row in rows if row.action != "comment_added"]
     body = (
         "\n".join(
-            f"{row.created_at:%d.%m %H:%M} · {row.action} · {row.actor_user_id}"
+            f"{row.created_at:%d.%m %H:%M} · {row.action} · "
+            f"{'Вы' if row.actor_user_id == actor.id else 'Участник'}"
             for row in rows
         )
         or "История изменений пока пуста."

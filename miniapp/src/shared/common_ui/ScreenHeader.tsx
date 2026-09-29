@@ -1,9 +1,9 @@
-import { Icon } from "./Icon";
+import { Icon, type IconName } from "./Icon";
 
 interface ScreenHeaderProps {
   title: string;
   subtitle?: string;
-  icon?: "home" | "building";
+  icon?: IconName;
   onBack?: () => void;
   action?: { label: string; onClick: () => void; icon: "bell" | "user" | "close" };
 }

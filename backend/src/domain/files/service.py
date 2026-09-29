@@ -57,7 +57,10 @@ async def _draft(
         )
     else:
         draft = await session.get(Draft, draft_id)
-    if draft is None or draft.owner_user_id != actor.id:
+    if draft is None or (
+        draft.owner_user_id != actor.id
+        and (getattr(actor, "kind", None) != "admin" or for_upload)
+    ):
         raise _draft_not_found()
     if draft.expires_at is not None and draft.expires_at <= _now():
         raise FileError(409, "draft_expired", "Срок черновика истёк")
@@ -273,7 +276,7 @@ async def get_file(
     if file is None:
         raise _not_found()
     if file.state == "staged" and file.draft_id is not None:
-        if file.uploader_user_id != actor.id:
+        if file.uploader_user_id != actor.id and getattr(actor, "kind", None) != "admin":
             raise _not_found()
         await _draft(session, actor, file.draft_id)
     elif file.state == "ready":

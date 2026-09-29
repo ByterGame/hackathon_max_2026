@@ -64,6 +64,8 @@ async def require_request_party(
     request: Any,
     writing: bool,
 ) -> None:
+    if actor.kind == "admin":
+        return
     if kind in {"company_registration", "house_addition"}:
         if request.applicant_user_id == actor.id or actor.kind == "support":
             return
@@ -106,6 +108,7 @@ async def add_discussion_message(
     message = {
         "id": str(message_id),
         "author_user_id": str(actor.id),
+        "author_kind": actor.kind,
         "text": body,
         "created_at": utcnow().isoformat(),
     }

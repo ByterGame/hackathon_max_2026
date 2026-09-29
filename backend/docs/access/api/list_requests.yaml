@@ -1,20 +1,48 @@
 path: /access/list_requests
 method: get
 summary: Список доступных заявок
-description: Пользователь видит свои заявки, сотрудник УК — заявки своих домов, поддержка — обращения УК. Для заявки жителя ответ содержит address_display подключённого дома.
+description: Пользователь видит свои заявки, сотрудник УК — заявки своих домов, поддержка — обращения УК. Вид mine возвращает собственные заявки всех трёх типов в общем порядке. Для заявки жителя ответ содержит address_display подключённого дома.
 parameters:
   - name: request_kind
     in: query
     required: true
     schema:
       type: string
-      enum: [company_registration, house_addition, resident]
+      enum: [company_registration, house_addition, resident, mine]
   - name: house_id
     in: query
     required: false
     schema:
       type: string
       format: uuid
+  - name: company_id
+    in: query
+    required: false
+    description: Фильтр по УК для заявок жильцов или подключения дома.
+    schema:
+      type: string
+      format: uuid
+  - name: limit
+    in: query
+    required: false
+    description: Число заявок на странице. По умолчанию 100 для существующих клиентов.
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 100
+  - name: offset
+    in: query
+    required: false
+    description: Число пропускаемых заявок.
+    schema:
+      type: integer
+      minimum: 0
+  - name: support_view
+    in: query
+    required: false
+    description: Очередь поддержки; требует роль оператора или администратора.
+    schema:
+      type: boolean
 responses:
   '200':
     description: Список заявок.
@@ -25,10 +53,19 @@ responses:
 schemas:
   Response200:
     type: object
-    required: [items]
+    required: [items, total, limit, offset]
     properties:
       items:
         type: array
         items:
           type: object
           additionalProperties: true
+      total:
+        type: integer
+        minimum: 0
+      limit:
+        type: integer
+        minimum: 1
+      offset:
+        type: integer
+        minimum: 0

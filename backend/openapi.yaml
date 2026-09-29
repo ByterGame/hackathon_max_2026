@@ -320,8 +320,9 @@ paths:
     get:
       summary: Список доступных заявок
       description: Пользователь видит свои заявки, сотрудник УК — заявки своих домов,
-        поддержка — обращения УК. Для заявки жителя ответ содержит address_display
-        подключённого дома.
+        поддержка — обращения УК. Вид mine возвращает собственные заявки всех трёх
+        типов в общем порядке. Для заявки жителя ответ содержит address_display подключённого
+        дома.
       parameters:
       - name: request_kind
         in: query
@@ -332,12 +333,41 @@ paths:
           - company_registration
           - house_addition
           - resident
+          - mine
       - name: house_id
         in: query
         required: false
         schema:
           type: string
           format: uuid
+      - name: company_id
+        in: query
+        required: false
+        description: Фильтр по УК для заявок жильцов или подключения дома.
+        schema:
+          type: string
+          format: uuid
+      - name: limit
+        in: query
+        required: false
+        description: Число заявок на странице. По умолчанию 100 для существующих клиентов.
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+      - name: offset
+        in: query
+        required: false
+        description: Число пропускаемых заявок.
+        schema:
+          type: integer
+          minimum: 0
+      - name: support_view
+        in: query
+        required: false
+        description: Очередь поддержки; требует роль оператора или администратора.
+        schema:
+          type: boolean
       responses:
         '200':
           description: Список заявок.
@@ -655,79 +685,6 @@ paths:
       operationId: drafts_submit
       tags:
       - drafts
-  /example_codegen/client/create_request:
-    post:
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/gen.example_codegen.api.client.create_request.Request'
-      responses:
-        '201':
-          description: Заявка создана.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/gen.example_codegen.api.client.create_request.Response201'
-      operationId: example_codegen_client_create_request
-      tags:
-      - example_codegen
-  /example_codegen/client/get_request:
-    get:
-      summary: Получить заявку
-      description: Возвращает заявку по идентификатору.
-      parameters:
-      - name: request_id
-        in: query
-        required: true
-        schema:
-          type: integer
-          minimum: 1
-      responses:
-        '200':
-          description: Заявка найдена.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/gen.example_codegen.api.client.get_request.Response200'
-        '404':
-          description: Заявки с таким идентификатором нет.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/gen.example_codegen.api.client.get_request.Response404'
-      operationId: example_codegen_client_get_request
-      tags:
-      - example_codegen
-  /images/get_next:
-    get:
-      summary: Получить следующую картинку
-      description: Возвращает следующую картинку из упорядоченного циклического списка.
-      parameters:
-      - name: current_id
-        in: query
-        required: false
-        description: Имя картинки, показанной сейчас.
-        schema:
-          type: string
-          maxLength: 255
-      responses:
-        '200':
-          description: Следующая картинка найдена.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/gen.images.api.get_next.Response200'
-        '404':
-          description: В каталоге нет картинок.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/gen.images.api.get_next.Response404'
-      operationId: images_get_next
-      tags:
-      - images
   /issues/add_comment:
     post:
       summary: Добавить комментарий к проблеме
@@ -1094,21 +1051,6 @@ components:
         expires_at:
           type: string
           format: date-time
-    gen.example_codegen.internal.request_data.RequestStatus:
-      type: string
-      enum:
-      - new
-      - closed
-    gen.example_codegen.internal.request_data.RequestData:
-      type: object
-      required:
-      - id
-      - status
-      properties:
-        id:
-          type: integer
-        status:
-          $ref: '#/components/schemas/gen.example_codegen.internal.request_data.RequestStatus'
     gen.issues.internal.issue_data.Category:
       type: object
       required:
@@ -1835,12 +1777,24 @@ components:
       type: object
       required:
       - items
+      - total
+      - limit
+      - offset
       properties:
         items:
           type: array
           items:
             type: object
             additionalProperties: true
+        total:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 1
+        offset:
+          type: integer
+          minimum: 0
     gen.access.api.list_requests.QueryParams:
       type: object
       properties:
@@ -1850,6 +1804,23 @@ components:
         house_id:
           type: string
           format: uuid
+        company_id:
+          type: string
+          format: uuid
+          description: Фильтр по УК для заявок жильцов или подключения дома.
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+          description: Число заявок на странице. По умолчанию 100 для существующих
+            клиентов.
+        offset:
+          type: integer
+          minimum: 0
+          description: Число пропускаемых заявок.
+        support_view:
+          type: boolean
+          description: Очередь поддержки; требует роль оператора или администратора.
       required:
       - request_kind
     gen.access.api.list_residents.Response200:
@@ -2205,79 +2176,6 @@ components:
       properties:
         draft:
           $ref: '#/components/schemas/gen.drafts.internal.draft_data.DraftData'
-    gen.example_codegen.api.client.create_request.Request:
-      type: object
-      required:
-      - title
-      properties:
-        title:
-          type: string
-          minLength: 1
-    gen.example_codegen.api.client.create_request.Response201:
-      type: object
-      required:
-      - id
-      properties:
-        id:
-          type: integer
-    gen.example_codegen.api.client.get_request.Response200:
-      type: object
-      required:
-      - id
-      - status
-      properties:
-        id:
-          type: integer
-        status:
-          $ref: '#/components/schemas/gen.example_codegen.internal.request_data.RequestStatus'
-    gen.example_codegen.api.client.get_request.Response404:
-      type: object
-      required:
-      - code
-      - message
-      properties:
-        code:
-          type: string
-          const: request_not_found
-        message:
-          type: string
-    gen.example_codegen.api.client.get_request.QueryParams:
-      type: object
-      properties:
-        request_id:
-          type: integer
-          minimum: 1
-      required:
-      - request_id
-    gen.images.api.get_next.Response200:
-      type: object
-      required:
-      - id
-      - url
-      properties:
-        id:
-          type: string
-        url:
-          type: string
-    gen.images.api.get_next.Response404:
-      type: object
-      required:
-      - code
-      - message
-      properties:
-        code:
-          type: string
-          const: images_not_found
-        message:
-          type: string
-    gen.images.api.get_next.QueryParams:
-      type: object
-      properties:
-        current_id:
-          type: string
-          maxLength: 255
-          description: Имя картинки, показанной сейчас.
-      required: []
     gen.issues.api.add_comment.Request:
       type: object
       required:

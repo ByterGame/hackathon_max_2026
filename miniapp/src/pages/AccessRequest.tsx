@@ -1,13 +1,26 @@
 import { useEffect, useRef, useState } from "react";
 
 import { getDraft, listDrafts, saveDraft, submitDraft, type DraftData } from "../features/drafts/integrations/client_api";
-import { accessRequestStatusLabels } from "../features/issues/integrations/access_actions_api";
+import { accessRequestStatusLabels, listAccessRequestsPage, requestAccessCancellation, type AccessRequestDetail, type AccessRequestsPage } from "../features/issues/integrations/access_actions_api";
 import { isDemoMode, issuesClient } from "../features/issues/integrations/client_api";
 import { demoResident, formatDate, type House, type ResidentOffer, type ResidentRequest } from "../features/issues/types";
 import { NotificationToggle } from "../features/notifications/ui/NotificationToggle";
+import { HttpError } from "../shared/base_http_client";
 import { Icon } from "../shared/common_ui/Icon";
 import { ScreenHeader } from "../shared/common_ui/ScreenHeader";
 import { AccessCasePanel } from "./EmployeeAccess";
+
+const PAGE_SIZE = 20;
+
+function residentRequestFromPage(item: AccessRequestDetail): ResidentRequest {
+  return {
+    id: item.id, houseId: item.house_id ?? "", address: item.address_display,
+    fullName: item.submitted_full_name ?? "", entrance: item.submitted_entrance_number ?? 0,
+    apartment: item.submitted_apartment_number ?? 0, status: item.status,
+    outcome: item.outcome === "granted" || item.outcome === "denied" ? item.outcome : undefined,
+    decisionNote: item.decision_note ?? undefined, createdAt: item.created_at,
+  };
+}
 
 export function AccessRequest({ houses, requests, offers, initialName, onBack, onChanged, onOpenRequest }: { houses: House[]; requests: ResidentRequest[]; offers: ResidentOffer[]; initialName?: string; onBack: () => void; onChanged: () => Promise<void>; onOpenRequest: (id: string) => void }) {
   const [search, setSearch] = useState("");
@@ -21,6 +34,12 @@ export function AccessRequest({ houses, requests, offers, initialName, onBack, o
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const [selectedRequestId, setSelectedRequestId] = useState("");
+  const [offerOffset, setOfferOffset] = useState(0);
+  const [requestOffset, setRequestOffset] = useState(0);
+  const [requestRevision, setRequestRevision] = useState(0);
+  const [requestPage, setRequestPage] = useState<AccessRequestsPage | null>(null);
+  const [requestLoading, setRequestLoading] = useState(!isDemoMode);
+  const [requestError, setRequestError] = useState("");
   const [sharedDraft, setSharedDraft] = useState<DraftData | null>(null);
   const sharedDraftRef = useRef<DraftData | null>(null);
   const draftSaveInFlight = useRef<Promise<DraftData> | null>(null);
@@ -30,6 +49,44 @@ export function AccessRequest({ houses, requests, offers, initialName, onBack, o
   const createKey = useRef<string | null>(null);
   const [draftNotice, setDraftNotice] = useState("");
   const myOffers = isDemoMode ? offers.filter((item) => item.phone === demoResident.phone) : offers;
+  const visibleOffers = myOffers.slice(offerOffset, offerOffset + PAGE_SIZE);
+  const visibleRequests = isDemoMode ? requests.slice(requestOffset, requestOffset + PAGE_SIZE) : requestPage?.items.map(residentRequestFromPage) ?? [];
+  const requestTotal = isDemoMode ? requests.length : requestPage?.total ?? 0;
+
+  useEffect(() => {
+    if (offerOffset > 0 && offerOffset >= myOffers.length) {
+      setOfferOffset(Math.max(0, Math.floor((myOffers.length - 1) / PAGE_SIZE) * PAGE_SIZE));
+    }
+  }, [offerOffset, myOffers.length]);
+
+  useEffect(() => {
+    if (isDemoMode && requestOffset > 0 && requestOffset >= requests.length) {
+      setRequestOffset(Math.max(0, Math.floor((requests.length - 1) / PAGE_SIZE) * PAGE_SIZE));
+    }
+  }, [requestOffset, requests.length]);
+
+  useEffect(() => {
+    if (isDemoMode) return;
+    let cancelled = false;
+    setRequestLoading(true); setRequestError(""); setRequestPage(null);
+    void listAccessRequestsPage("resident", requestOffset, PAGE_SIZE)
+      .then((page) => {
+        if (cancelled) return;
+        if (requestOffset > 0 && requestOffset >= page.total) {
+          setRequestOffset(Math.max(0, Math.floor((page.total - 1) / PAGE_SIZE) * PAGE_SIZE));
+        } else {
+          setRequestPage(page);
+        }
+      })
+      .catch((reason) => { if (!cancelled) setRequestError(reason instanceof HttpError && reason.status === 403 ? "Нет доступа к своим заявкам" : reason instanceof Error ? reason.message : "Не удалось загрузить заявки"); })
+      .finally(() => { if (!cancelled) setRequestLoading(false); });
+    return () => { cancelled = true; };
+  }, [requestOffset, requestRevision]);
+
+  async function refreshRequests() {
+    await onChanged();
+    setRequestRevision((current) => current + 1);
+  }
 
   useEffect(() => {
     if (isDemoMode) return;
@@ -109,6 +166,14 @@ export function AccessRequest({ houses, requests, offers, initialName, onBack, o
     finally { setBusy(false); }
   }
 
+  async function cancelOpenRequest(id: string) {
+    if (!window.confirm("Отменить заявку на доступ к дому?")) return;
+    setBusy(true); setError("");
+    try { await requestAccessCancellation("resident", id); await refreshRequests(); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "Не удалось отменить заявку"); }
+    finally { setBusy(false); }
+  }
+
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     if (!selectedHouse || !confirmed) { setError("Выберите и подтвердите адрес дома"); return; }
@@ -137,7 +202,7 @@ export function AccessRequest({ houses, requests, offers, initialName, onBack, o
         sharedDraftRef.current = submitted;
         setSharedDraft(submitted);
       }
-      await onChanged();
+      await refreshRequests();
       setSuccess(true);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Не удалось подать заявку"); }
     finally { setBusy(false); }
@@ -158,8 +223,10 @@ export function AccessRequest({ houses, requests, offers, initialName, onBack, o
         {error && <p className="form-error" role="alert">{error}</p>}
         <button className="button button--primary button--wide" type="submit" disabled={busy}>{busy ? "Отправляем…" : createdRequestId.current ? "Завершить подачу" : isDemoMode ? "Подать заявку в демо" : "Отправить заявку в УК"}</button>
       </form>}
-      {myOffers.length > 0 && <section className="requests-list"><div className="section-heading"><h2>Предложения от УК</h2></div>{myOffers.map((offer) => <div className="panel request-card" key={offer.id}><strong>{houses.find((item) => item.id === offer.houseId)?.address ?? "Дом"}</strong><span>Подъезд №{offer.entrance}, кв. {offer.apartment}</span><small>{offer.status === "pending" ? "Ожидает вашего ответа" : offer.status === "accepted" ? "Принято, доступ выдан" : "Отклонено"}</small>{offer.status === "pending" && <div className="button-row"><button type="button" className="button button--soft" disabled={busy} onClick={() => void answerOffer(offer.id, false)}>Отклонить</button><button type="button" className="button button--primary" disabled={busy} onClick={() => void answerOffer(offer.id, true)}>Принять</button></div>}</div>)}</section>}
-      {requests.length > 0 && <section className="requests-list"><div className="section-heading"><h2>Мои заявки</h2></div>{requests.map((request) => <div className="panel request-card" key={request.id}><strong>{request.address ?? houses.find((item) => item.id === request.houseId)?.address ?? "Дом по заявке"}</strong><span>Подъезд №{request.entrance}, кв. {request.apartment}</span><small>{formatDate(request.createdAt)} · {request.status === "closed" ? request.outcome === "granted" ? "Доступ выдан" : "Отказано" : accessRequestStatusLabels[request.status]}</small>{request.decisionNote && <span>Пояснение УК: {request.decisionNote}</span>}<NotificationToggle subject="resident_request" id={request.id} /><button type="button" className="button button--soft" aria-expanded={selectedRequestId === request.id} onClick={() => setSelectedRequestId((current) => current === request.id ? "" : request.id)}>{selectedRequestId === request.id ? "Скрыть обсуждение" : "Открыть заявку"}</button>{selectedRequestId === request.id && <AccessCasePanel key={request.id} kind="resident" id={request.id} perspective="applicant" onChanged={onChanged} />}</div>)}</section>}
+      {myOffers.length > 0 && <section className="requests-list"><div className="section-heading"><h2>Предложения от УК</h2><span className="count-badge">{myOffers.length}</span></div>{visibleOffers.map((offer) => <div className="panel request-card" key={offer.id}><strong>{houses.find((item) => item.id === offer.houseId)?.address ?? "Дом"}</strong><span>Подъезд №{offer.entrance}, кв. {offer.apartment}</span><small>{offer.status === "pending" ? "Ожидает вашего ответа" : offer.status === "accepted" ? "Принято, доступ выдан" : "Отклонено"}</small>{offer.status === "pending" && <div className="button-row"><button type="button" className="button button--soft" disabled={busy} onClick={() => void answerOffer(offer.id, false)}>Отклонить</button><button type="button" className="button button--primary" disabled={busy} onClick={() => void answerOffer(offer.id, true)}>Принять</button></div>}</div>)}{myOffers.length > PAGE_SIZE && <div className="admin-pagination"><button type="button" className="button button--soft" disabled={offerOffset === 0} onClick={() => setOfferOffset(Math.max(0, offerOffset - PAGE_SIZE))}>Назад</button><span>Страница {Math.floor(offerOffset / PAGE_SIZE) + 1} из {Math.ceil(myOffers.length / PAGE_SIZE)}</span><button type="button" className="button button--soft" disabled={offerOffset + PAGE_SIZE >= myOffers.length} onClick={() => setOfferOffset(offerOffset + PAGE_SIZE)}>Далее</button></div>}</section>}
+      {requestLoading && <p className="muted-text">Загружаем заявки…</p>}
+      {requestError && <p className="form-error" role="alert">{requestError}</p>}
+      {!requestLoading && !requestError && requestTotal > 0 && <section className="requests-list"><div className="section-heading"><h2>Мои заявки</h2><span className="count-badge">{requestTotal}</span></div>{visibleRequests.map((request) => <div className="panel request-card" key={request.id}><strong>{request.address ?? houses.find((item) => item.id === request.houseId)?.address ?? "Дом по заявке"}</strong><span>Подъезд №{request.entrance}, кв. {request.apartment}</span><small>{formatDate(request.createdAt)} · {request.status === "closed" ? request.outcome === "granted" ? "Доступ выдан" : "Отказано" : accessRequestStatusLabels[request.status]}</small>{request.decisionNote && <span>Пояснение УК: {request.decisionNote}</span>}<NotificationToggle subject="resident_request" id={request.id} /><div className="button-row"><button type="button" className="button button--soft" aria-expanded={selectedRequestId === request.id} onClick={() => setSelectedRequestId((current) => current === request.id ? "" : request.id)}>{selectedRequestId === request.id ? "Скрыть обсуждение" : "Открыть заявку"}</button>{!isDemoMode && request.status === "open" && selectedRequestId !== request.id && <button type="button" className="button button--soft" disabled={busy} onClick={() => void cancelOpenRequest(request.id)}>Отменить заявку</button>}</div>{selectedRequestId === request.id && <AccessCasePanel key={request.id} kind="resident" id={request.id} perspective="applicant" onChanged={refreshRequests} />}</div>)}{requestTotal > PAGE_SIZE && <div className="admin-pagination"><button type="button" className="button button--soft" disabled={requestOffset === 0} onClick={() => { setRequestOffset(Math.max(0, requestOffset - PAGE_SIZE)); setSelectedRequestId(""); }}>Назад</button><span>Страница {Math.floor(requestOffset / PAGE_SIZE) + 1} из {Math.ceil(requestTotal / PAGE_SIZE)}</span><button type="button" className="button button--soft" disabled={requestOffset + PAGE_SIZE >= requestTotal} onClick={() => { setRequestOffset(requestOffset + PAGE_SIZE); setSelectedRequestId(""); }}>Далее</button></div>}</section>}
       {error && success && <p className="form-error" role="alert">{error}</p>}
     </div>
   );

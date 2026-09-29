@@ -10,12 +10,13 @@ from .access import (
 from .base import Base
 from .bot_dialog import BotDialog
 from .housing import Apartment, Company, House
-from .identity import StaffAssignment, User
+from .identity import StaffAssignment, SupportInvitation, User
 from .issues import IssueCard, IssueCategory, IssueMessage, IssueReport, IssueSupport, IssueTarget
-from .system import AuditEvent, BotMute, CommandReceipt, Draft, File, Notification, OutboxEvent
+from .system import AdminOperation, AuditEvent, BotMute, CommandReceipt, Draft, File, Notification, OutboxEvent
 
 __all__ = [
     "Apartment",
+    "AdminOperation",
     "AuditEvent",
     "Base",
     "BotDialog",
@@ -39,5 +40,6 @@ __all__ = [
     "ResidentOffer",
     "ResidentRequest",
     "StaffAssignment",
+    "SupportInvitation",
     "User",
 ]

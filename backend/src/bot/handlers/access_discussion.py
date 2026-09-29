@@ -18,11 +18,17 @@ def discussion_pages(
     current = ""
     for number, message in enumerate(messages, start=1):
         author_id = str(message["author_user_id"])
-        author = (
-            "Вы"
-            if author_id == actor_id
-            else "Заявитель" if author_id == applicant_id else "Другая сторона"
-        )
+        if author_id == actor_id:
+            author = "Вы"
+        else:
+            role_label = {
+                "admin": "Администратор",
+                "support": "Поддержка",
+                "employee": "Сотрудник УК",
+            }.get(message.get("author_kind"))
+            author = role_label or (
+                "Заявитель" if author_id == applicant_id else "Другая сторона"
+            )
         remaining = str(message["text"])
         first = True
         while first or remaining:

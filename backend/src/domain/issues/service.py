@@ -136,6 +136,18 @@ async def _lock_issue_house(session: AsyncSession, card_id: UUID) -> IssueCard:
     return await resolve_card(session, card_id)
 
 
+async def require_unmerged_card(session: AsyncSession, card_id: UUID) -> IssueCard:
+    """Reject administrative edits through a merged source card's old ID."""
+    current = await _lock_issue_house(session, card_id)
+    if current.id != card_id:
+        raise IssueError(
+            "issue_merged",
+            "Эта карточка объединена с другой; откройте основную карточку",
+            409,
+        )
+    return current
+
+
 async def _lock_visible_card(
     session: AsyncSession, actor: User, card_id: UUID
 ) -> IssueCard:
@@ -178,6 +190,8 @@ async def merged_card_ids(session: AsyncSession, primary_id: UUID) -> set[UUID]:
 
 
 async def _can_view(session: AsyncSession, actor: User, card: IssueCard) -> bool:
+    if actor.kind == "admin":
+        return True
     house = await _house(session, card.house_id)
     if await _staff_assignment(session, actor, house) is not None:
         return True
@@ -214,7 +228,7 @@ async def list_visible_cards(
 ) -> list[IssueCard]:
     house = await _house(session, house_id)
     staff = await _staff_assignment(session, actor, house)
-    if staff is None:
+    if staff is None and actor.kind != "admin":
         apartments, _ = await _resident_locations(session, actor, house)
         if not apartments:
             raise IssueError("house_access_denied", "Нет доступа к дому", 403)
@@ -229,7 +243,7 @@ async def list_visible_cards(
             query.order_by(IssueCard.created_at.desc(), IssueCard.id.desc())
         )
     ).all()
-    if staff is not None:
+    if staff is not None or actor.kind == "admin":
         return list(cards)
     return [card for card in cards if await _can_view(session, actor, card)]
 
@@ -372,7 +386,7 @@ async def edit_card(
     card = await _lock_issue_house(session, card_id)
     house = await _house(session, card.house_id)
     staff = await _staff_assignment(session, actor, house, for_update=True)
-    if staff is None or not staff.can_manage_issues:
+    if actor.kind != "admin" and (staff is None or not staff.can_manage_issues):
         raise IssueError("issue_permission_denied", "Нет права менять карточку", 403)
     if card.version != expected_version:
         raise IssueError("stale_card", "Карточка изменилась; обновите страницу", 409)
@@ -493,6 +507,12 @@ async def support_card(
 async def add_comment(
     session: AsyncSession, actor: User, card_id: UUID, text: str
 ) -> IssueMessage:
+    if actor.kind == "admin":
+        raise IssueError(
+            "admin_comment_unavailable",
+            "Администратор не может отвечать от имени УК или жителя",
+            403,
+        )
     card = await _lock_visible_card(session, actor, card_id)
     body = text.strip()
     if not body:
@@ -534,7 +554,7 @@ async def set_status(
     card = await _lock_issue_house(session, card_id)
     house = await _house(session, card.house_id)
     staff = await _staff_assignment(session, actor, house, for_update=True)
-    if staff is None or not staff.can_manage_issues:
+    if actor.kind != "admin" and (staff is None or not staff.can_manage_issues):
         raise IssueError("issue_permission_denied", "Нет права менять статус", 403)
     if status not in ALL_STATUSES:
         raise IssueError("invalid_status", "Неизвестный статус")
@@ -546,7 +566,8 @@ async def set_status(
         if close_result not in CLOSE_RESULTS or not note or not note.strip():
             raise IssueError("close_requires_result", "Укажите результат и пояснение")
         card.close_result = close_result
-        card.closed_at = _now()
+        if old_status != "closed":
+            card.closed_at = _now()
     else:
         if close_result is not None:
             raise IssueError("invalid_close_result", "Результат нужен только при закрытии")
@@ -658,7 +679,7 @@ async def merge_cards(
     ):
         raise IssueError("cannot_merge", "Объединить можно только две открытые проблемы одного дома")
     staff = await _staff_assignment(session, actor, house, for_update=True)
-    if staff is None or not staff.can_manage_issues:
+    if actor.kind != "admin" and (staff is None or not staff.can_manage_issues):
         raise IssueError("issue_permission_denied", "Нет права объединять проблемы", 403)
     if final_status not in ACTIVE_STATUSES or not final_title.strip():
         raise IssueError("invalid_merge_result", "Укажите итоговые статус и название")

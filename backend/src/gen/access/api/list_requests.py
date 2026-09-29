@@ -4,19 +4,35 @@ from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, conint
 
 
 class Response200(BaseModel):
     items: list[dict[str, Any]]
+    total: conint(ge=0)
+    limit: conint(ge=1)
+    offset: conint(ge=0)
 
 
 class RequestKind(StrEnum):
     company_registration = 'company_registration'
     house_addition = 'house_addition'
     resident = 'resident'
+    mine = 'mine'
 
 
 class QueryParams(BaseModel):
     request_kind: RequestKind
     house_id: UUID | None = None
+    company_id: UUID | None = Field(
+        None, description='Фильтр по УК для заявок жильцов или подключения дома.'
+    )
+    limit: conint(ge=1, le=100) | None = Field(
+        None,
+        description='Число заявок на странице. По умолчанию 100 для существующих клиентов.',
+    )
+    offset: conint(ge=0) | None = Field(None, description='Число пропускаемых заявок.')
+    support_view: bool | None = Field(
+        None,
+        description='Очередь поддержки; требует роль оператора или администратора.',
+    )

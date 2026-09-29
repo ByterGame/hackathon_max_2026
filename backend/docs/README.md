@@ -48,8 +48,6 @@ python -m uvicorn src.main:app --reload
 - `backend/docs/<domain_name>/api/<name>.yaml`: документы отдельных HTTP-ручек.
 - `backend/docs/<domain_name>/internal/<name>.yaml`: группы связанных внутренних
   схем; каждый файл даёт один модуль `src/gen/<domain_name>/internal/<name>.py`.
-- `backend/docs/example_codegen/`: учебные контракты для проверки генератора;
-  это не предметная область продукта.
 - `backend/tools/codegen/`: сборщик контрактов, генератор и шаблоны Python-кода.
 
 Мини-приложение использует React, TypeScript, Vite, MAX Bridge и собственные

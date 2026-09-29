@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, literal, or_, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.models import (
@@ -18,13 +18,13 @@ from src.db.models import (
     StaffAssignment,
     User,
 )
-from src.domain.access.common import require_staff
+from src.domain.access.common import require_staff, require_support
 from src.domain.access.requests import (
     load_request,
     model_for_kind,
     require_request_party,
 )
-from src.domain.access.rules import require_verified_phone
+from src.domain.access.rules import AccessRuleError, require_verified_phone
 
 
 def _iso(value: datetime | None) -> str | None:
@@ -105,42 +105,132 @@ async def list_requests(
     kind: str,
     house_id: UUID | None = None,
 ) -> list[dict[str, Any]]:
+    page = await list_requests_page(
+        session, actor, kind=kind, house_id=house_id, limit=100, offset=0
+    )
+    return page["items"]
+
+
+async def list_requests_page(
+    session: AsyncSession,
+    actor: User,
+    *,
+    kind: str,
+    house_id: UUID | None = None,
+    company_id: UUID | None = None,
+    limit: int = 100,
+    offset: int = 0,
+    support_view: bool = False,
+) -> dict[str, Any]:
+    if limit < 1 or limit > 100 or offset < 0:
+        raise AccessRuleError(400, "invalid_page", "Недопустимая страница заявок")
+    if kind == "mine":
+        if support_view or house_id is not None or company_id is not None:
+            raise AccessRuleError(400, "invalid_filter", "Для списка своих заявок этот фильтр недоступен")
+        return await _list_my_requests_page(session, actor, limit=limit, offset=offset)
+    if support_view:
+        if kind not in {"company_registration", "house_addition"}:
+            raise AccessRuleError(
+                400, "invalid_request_kind", "Поддержка рассматривает обращения УК и домов"
+            )
+        require_support(actor)
     model = model_for_kind(kind)
     statement = select(model)
     if kind == "resident":
+        if company_id is not None and actor.kind == "employee":
+            await require_staff(session, actor, company_id)
         company_ids = select(StaffAssignment.company_id).where(
             StaffAssignment.user_id == actor.id,
             StaffAssignment.revoked_at.is_(None),
         )
         statement = select(model, House.address_display).join(
             House, House.id == ResidentRequest.house_id
-        ).where(
-            or_(
-                ResidentRequest.applicant_user_id == actor.id,
-                House.company_id.in_(company_ids),
-            )
         )
+        if actor.kind != "admin":
+            statement = statement.where(
+                or_(
+                    ResidentRequest.applicant_user_id == actor.id,
+                    House.company_id.in_(company_ids),
+                )
+            )
         if house_id is not None:
             statement = statement.where(ResidentRequest.house_id == house_id)
+        if company_id is not None:
+            statement = statement.where(House.company_id == company_id)
     elif kind == "company_registration":
-        if actor.kind != "support":
+        if company_id is not None:
+            raise AccessRuleError(400, "invalid_filter", "Заявка на регистрацию УК ещё не привязана к компании")
+        if actor.kind not in {"support", "admin"}:
             statement = statement.where(
                 CompanyRegistrationRequest.applicant_user_id == actor.id
             )
     else:
-        if actor.kind != "support":
+        if company_id is not None:
+            statement = statement.where(HouseAdditionRequest.company_id == company_id)
+        if actor.kind not in {"support", "admin"}:
             statement = statement.where(
                 HouseAdditionRequest.applicant_user_id == actor.id
             )
-    statement = statement.order_by(model.created_at.desc(), model.id.desc()).limit(100)
+    total = await session.scalar(
+        select(func.count()).select_from(statement.order_by(None).subquery())
+    )
+    statement = (
+        statement.order_by(model.created_at.desc(), model.id.desc())
+        .limit(limit)
+        .offset(offset)
+    )
     if kind == "resident":
         rows = (await session.execute(statement)).all()
-        return [
+        items = [
             request_data(kind, row) | {"address_display": address}
             for row, address in rows
         ]
-    rows = list((await session.scalars(statement)).all())
-    return [request_data(kind, row) for row in rows]
+    else:
+        rows = list((await session.scalars(statement)).all())
+        items = [request_data(kind, row) for row in rows]
+    return {"items": items, "total": total or 0, "limit": limit, "offset": offset}
+
+
+async def _list_my_requests_page(
+    session: AsyncSession, actor: User, *, limit: int, offset: int
+) -> dict[str, Any]:
+    """One chronological page across all three application types, owned by actor."""
+    sources = (
+        ("resident", ResidentRequest),
+        ("company_registration", CompanyRegistrationRequest),
+        ("house_addition", HouseAdditionRequest),
+    )
+    keys = union_all(
+        *(
+            select(
+                literal(kind).label("kind"),
+                model.id.label("id"),
+                model.created_at.label("created_at"),
+            ).where(model.applicant_user_id == actor.id)
+            for kind, model in sources
+        )
+    ).subquery()
+    total = int(await session.scalar(select(func.count()).select_from(keys)) or 0)
+    selected = (
+        await session.execute(
+            select(keys.c.kind, keys.c.id)
+            .order_by(keys.c.created_at.desc(), keys.c.id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+    ).all()
+    items: list[dict[str, Any]] = []
+    for kind, row_id in selected:
+        row = await session.get(model_for_kind(kind), row_id)
+        if row is None:
+            continue
+        item = request_data(kind, row)
+        if kind == "resident":
+            house = await session.get(House, row.house_id)
+            if house is not None:
+                item["address_display"] = house.address_display
+        items.append(item)
+    return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 
 async def search_houses(session: AsyncSession, text: str) -> list[dict[str, Any]]:

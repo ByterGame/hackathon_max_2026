@@ -106,6 +106,7 @@ class IssueTextPaginationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Первое описание", first)
         self.assertIn(f"Далее: /issue {card_id} 2", first)
         self.assertIn("ПОСЛЕДНИЙ СИМВОЛ", last)
+        self.assertNotIn(str(self.actor.id), first + last)
         self.assertEqual(visible.await_count, 2)
 
     async def test_history_command_reaches_last_audit_event(self) -> None:
@@ -120,6 +121,7 @@ class IssueTextPaginationTests(unittest.IsolatedAsyncioTestCase):
             )
             for number in range(40)
         ]
+        events.insert(0, SimpleNamespace(id=uuid4(), created_at=stamp, action="comment_added", actor_user_id=self.actor.id))
         self.session.scalars = AsyncMock(
             return_value=SimpleNamespace(all=lambda: events)
         )
@@ -141,6 +143,23 @@ class IssueTextPaginationTests(unittest.IsolatedAsyncioTestCase):
             )
         self.assertIn("Далее: /history", first)
         self.assertIn("event-39", last)
+        self.assertNotIn("comment_added", first + last)
+        self.assertNotIn(str(self.actor.id), first + last)
+
+    def test_discussion_participant_labels_do_not_include_user_ids(self) -> None:
+        another_user_id = uuid4()
+        self.assertEqual(
+            issues_text._participant_label(self.actor.id, self.actor.id), "Вы"
+        )
+        self.assertEqual(
+            issues_text._participant_label(self.actor.id, another_user_id), "Житель"
+        )
+        self.assertEqual(
+            issues_text._participant_label(
+                self.actor.id, another_user_id, official=True
+            ),
+            "УК",
+        )
 
     async def test_history_denies_card_after_access_revocation(self) -> None:
         card_id = uuid4()

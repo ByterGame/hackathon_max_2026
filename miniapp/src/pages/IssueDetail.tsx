@@ -114,8 +114,9 @@ export function IssueDetail({ issue, house, role, currentUserId, canManageIssues
     if (!comment.trim() && !commentFile && !pendingCommentId) return;
     if (commentFile && issue.status === "closed") { setError("В закрытую проблему нельзя добавить файл"); return; }
     setBusy(true); setError("");
+    let messageId = pendingCommentId;
+    let fileUploadPending = Boolean(commentFile);
     try {
-      let messageId = pendingCommentId;
       if (!messageId) {
         if (!commentKey.current && !isDemoMode) commentKey.current = crypto.randomUUID();
         const result = await issuesClient.addMessage(issue.id, role, comment.trim() || "Вложение", commentKey.current ?? undefined);
@@ -124,18 +125,29 @@ export function IssueDetail({ issue, house, role, currentUserId, canManageIssues
       }
       if (commentFile) {
         if (!messageId) throw new Error("Сообщение отправлено, но сервер не вернул идентификатор для вложения");
-        try { await uploadParentFile(commentFile, "issue_message", messageId); }
-        catch (reason) {
-          const alreadyUploaded = await listFiles("issue_message", messageId).then((items) => items.some((item) => item.original_name === commentFile.name && item.size_bytes === commentFile.size)).catch(() => false);
-          if (!alreadyUploaded) throw reason;
+        const attachmentMessageId = messageId;
+        try {
+          const uploaded = await uploadParentFile(commentFile, "issue_message", attachmentMessageId);
+          setMessageFiles((current) => ({ ...current, [attachmentMessageId]: [...(current[attachmentMessageId] ?? []), uploaded] }));
         }
+        catch (reason) {
+          const existing = await listFiles("issue_message", attachmentMessageId).catch(() => []);
+          if (!existing.some((item) => item.original_name === commentFile.name && item.size_bytes === commentFile.size)) throw reason;
+          setMessageFiles((current) => ({ ...current, [attachmentMessageId]: existing }));
+        }
+        fileUploadPending = false;
       }
       await onChanged();
       setComment("");
       setCommentFile(null);
       setPendingCommentId(null);
       commentKey.current = null;
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "Не удалось отправить сообщение или файл"); }
+    } catch (reason) {
+      const detail = reason instanceof Error ? reason.message : "Не удалось отправить сообщение или файл";
+      setError(fileUploadPending && messageId
+        ? `Комментарий сохранён, но файл не загружен: ${detail}. Нажмите «Отправить» ещё раз — комментарий не продублируется.`
+        : detail);
+    }
     finally { setBusy(false); }
   }
 

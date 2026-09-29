@@ -29,6 +29,33 @@ class AccessDiscussionTests(unittest.TestCase):
             with self.subTest(raw=raw), self.assertRaises(ValueError):
                 page_number(raw)
 
+    def test_author_kind_labels_only_other_people_and_keeps_legacy_fallback(
+        self,
+    ) -> None:
+        messages = [
+            {"author_user_id": "me", "author_kind": "admin", "text": "своё"},
+            {
+                "author_user_id": "applicant",
+                "author_kind": "resident",
+                "text": "заявка",
+            },
+            {"author_user_id": "admin", "author_kind": "admin", "text": "решение"},
+            {"author_user_id": "support", "author_kind": "support", "text": "проверка"},
+            {"author_user_id": "staff", "author_kind": "employee", "text": "ответ"},
+            {"author_user_id": "old", "text": "старое"},
+        ]
+        pages = discussion_pages(
+            messages, actor_id="me", applicant_id="applicant", max_chars=500
+        )
+        self.assertEqual(
+            pages,
+            [
+                "1. Вы: своё\n\n2. Заявитель: заявка\n\n"
+                "3. Администратор: решение\n\n4. Поддержка: проверка\n\n"
+                "5. Сотрудник УК: ответ\n\n6. Другая сторона: старое"
+            ],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

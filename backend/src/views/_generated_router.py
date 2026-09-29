@@ -537,7 +537,7 @@ router.add_api_route(
     ) else [],
     operation_id='access_list_requests',
     summary='Список доступных заявок',
-    description='Пользователь видит свои заявки, сотрудник УК — заявки своих домов, поддержка — обращения УК. Для заявки жителя ответ содержит address_display подключённого дома.',
+    description='Пользователь видит свои заявки, сотрудник УК — заявки своих домов, поддержка — обращения УК. Вид mine возвращает собственные заявки всех трёх типов в общем порядке. Для заявки жителя ответ содержит address_display подключённого дома.',
     tags=['access'],
     deprecated=False,
     status_code=200,
@@ -999,106 +999,6 @@ router.add_api_route(
         },
         409: {
             "description": 'Черновик уже отправлен или устарел revision.',
-        },
-    },
-)
-
-_handler = import_module('src.views.example_codegen.client.create_request')
-_models = import_module('src.gen.example_codegen.api.client.create_request')
-_RESPONSE_CODES_EXAMPLE_CODEGEN_CLIENT_CREATE_REQUEST = {
-    _models.Response201: 201,
-}
-router.add_api_route(
-    path='/example_codegen/client/create_request',
-    endpoint=_with_response_codes(
-        _handler.create_request,
-        _RESPONSE_CODES_EXAMPLE_CODEGEN_CLIENT_CREATE_REQUEST,
-    ),
-    methods=['POST'],
-    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
-        '/example_codegen/client/create_request', 'POST'
-    ) else [],
-    operation_id='example_codegen_client_create_request',
-    summary=None,
-    description=None,
-    tags=['example_codegen'],
-    deprecated=False,
-    status_code=201,
-    response_model=_models.Response201,
-    responses={
-        201: {
-            "description": 'Заявка создана.',
-            "model": _models.Response201,
-        },
-    },
-)
-
-_handler = import_module('src.views.example_codegen.client.get_request')
-_models = import_module('src.gen.example_codegen.api.client.get_request')
-_RESPONSE_CODES_EXAMPLE_CODEGEN_CLIENT_GET_REQUEST = {
-    _models.Response200: 200,
-    _models.Response404: 404,
-}
-router.add_api_route(
-    path='/example_codegen/client/get_request',
-    endpoint=_with_response_codes(
-        _handler.get_request,
-        _RESPONSE_CODES_EXAMPLE_CODEGEN_CLIENT_GET_REQUEST,
-    ),
-    methods=['GET'],
-    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
-        '/example_codegen/client/get_request', 'GET'
-    ) else [],
-    operation_id='example_codegen_client_get_request',
-    summary='Получить заявку',
-    description='Возвращает заявку по идентификатору.',
-    tags=['example_codegen'],
-    deprecated=False,
-    status_code=200,
-    response_model=_models.Response200,
-    responses={
-        200: {
-            "description": 'Заявка найдена.',
-            "model": _models.Response200,
-        },
-        404: {
-            "description": 'Заявки с таким идентификатором нет.',
-            "model": _models.Response404,
-        },
-    },
-)
-
-_handler = import_module('src.views.images.get_next')
-_models = import_module('src.gen.images.api.get_next')
-_RESPONSE_CODES_IMAGES_GET_NEXT = {
-    _models.Response200: 200,
-    _models.Response404: 404,
-}
-router.add_api_route(
-    path='/images/get_next',
-    endpoint=_with_response_codes(
-        _handler.get_next,
-        _RESPONSE_CODES_IMAGES_GET_NEXT,
-    ),
-    methods=['GET'],
-    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
-        '/images/get_next', 'GET'
-    ) else [],
-    operation_id='images_get_next',
-    summary='Получить следующую картинку',
-    description='Возвращает следующую картинку из упорядоченного циклического списка.',
-    tags=['images'],
-    deprecated=False,
-    status_code=200,
-    response_model=_models.Response200,
-    responses={
-        200: {
-            "description": 'Следующая картинка найдена.',
-            "model": _models.Response200,
-        },
-        404: {
-            "description": 'В каталоге нет картинок.',
-            "model": _models.Response404,
         },
     },
 )

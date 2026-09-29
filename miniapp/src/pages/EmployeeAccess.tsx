@@ -7,22 +7,61 @@ import {
   changeAccessRequestStatus,
   changeResidentGrant,
   getAccessRequest,
-  listCompanyRegistrationRequests,
+  listAccessRequestsPage,
   requestAccessCancellation,
   resolveAccessCancellation,
   revokeStaff,
   updateResidentAccessRequest,
   type AccessRequestDetail,
   type AccessRequestKind,
+  type AccessRequestsPage,
   type AccessRequestStatus,
+  type AccessDiscussionMessage,
 } from "../features/issues/integrations/access_actions_api";
 import { isDemoMode, issuesClient } from "../features/issues/integrations/client_api";
 import { demoResident, formatDate, type House, type HouseAdditionRequest, type ResidentGrant, type ResidentOffer, type ResidentRequest, type StaffAssignment, type StaffRights } from "../features/issues/types";
 import { Icon } from "../shared/common_ui/Icon";
 import { ScreenHeader } from "../shared/common_ui/ScreenHeader";
+import { HttpError } from "../shared/base_http_client";
 
 type Tab = "residents" | "staff" | "houses";
 const noRights: StaffRights = { manageStaff: false, manageResidents: false, manageIssues: false };
+const PAGE_SIZE = 20;
+
+function residentRequestFromPage(item: AccessRequestDetail): ResidentRequest {
+  return {
+    id: item.id, houseId: item.house_id ?? "", address: item.address_display,
+    fullName: item.submitted_full_name ?? "", entrance: item.submitted_entrance_number ?? 0,
+    apartment: item.submitted_apartment_number ?? 0, status: item.status,
+    outcome: item.outcome === "granted" || item.outcome === "denied" ? item.outcome : undefined,
+    decisionNote: item.decision_note ?? undefined, createdAt: item.created_at,
+  };
+}
+
+function houseRequestFromPage(item: AccessRequestDetail): HouseAdditionRequest {
+  return {
+    id: item.id, companyId: item.company_id ?? undefined,
+    registrationRequestId: item.registration_request_id ?? undefined,
+    address: item.entered_address ?? "", explanation: item.free_text ?? undefined,
+    status: item.status,
+    outcome: item.outcome === "approved" || item.outcome === "rejected" ? item.outcome : undefined,
+    decisionNote: item.decision_note ?? undefined, createdAt: item.created_at,
+  };
+}
+
+function RequestPager({ total, offset, loading, onPage }: { total: number; offset: number; loading: boolean; onPage: (offset: number) => void }) {
+  if (total <= PAGE_SIZE) return null;
+  return <div className="admin-pagination"><button type="button" className="button button--soft" disabled={loading || offset === 0} onClick={() => onPage(Math.max(0, offset - PAGE_SIZE))}>Назад</button><span>Страница {Math.floor(offset / PAGE_SIZE) + 1} из {Math.ceil(total / PAGE_SIZE)}</span><button type="button" className="button button--soft" disabled={loading || offset + PAGE_SIZE >= total} onClick={() => onPage(offset + PAGE_SIZE)}>Далее</button></div>;
+}
+
+function discussionAuthor(message: AccessDiscussionMessage, actorId: string, applicantId: string | null | undefined, perspective: "applicant" | "staff"): string {
+  if (message.author_user_id === actorId) return "Вы";
+  if (message.author_kind === "admin") return "Администратор";
+  if (message.author_kind === "support") return "Поддержка";
+  if (message.author_kind === "employee") return "Сотрудник УК";
+  if (message.author_user_id === applicantId) return perspective === "staff" ? "Житель" : "Заявитель";
+  return "Другая сторона";
+}
 
 interface AccessCasePanelProps {
   kind: AccessRequestKind;
@@ -108,7 +147,7 @@ export function AccessCasePanel({ kind, id, perspective, canManage = false, onCh
     {kind === "resident" && perspective === "applicant" && active && <div>{editing ? <form className="form-stack" onSubmit={(event) => { event.preventDefault(); void run(() => updateResidentAccessRequest(id, fullName, Number(entrance), Number(apartment)), "Данные заявки исправлены", () => setEditing(false)); }}><label className="field"><span>ФИО</span><input required value={fullName} onChange={(event) => setFullName(event.target.value)} /></label><div className="field-grid"><label className="field"><span>Подъезд</span><input required type="number" min="1" value={entrance} onChange={(event) => setEntrance(event.target.value)} /></label><label className="field"><span>Квартира</span><input required type="number" min="1" value={apartment} onChange={(event) => setApartment(event.target.value)} /></label></div><div className="button-row"><button type="button" className="button button--soft" onClick={() => setEditing(false)}>Не менять</button><button type="submit" className="button button--primary" disabled={busy || !fullName.trim() || Number(entrance) < 1 || Number(apartment) < 1}>Сохранить</button></div></form> : <button type="button" className="button button--soft" disabled={busy} onClick={() => setEditing(true)}>Исправить ФИО или квартиру</button>}</div>}
 
     <div className="section-heading"><h3>Обсуждение</h3><span className="count-badge">{detail.discussion.length}</span></div>
-    <div className="message-list">{detail.discussion.length ? detail.discussion.map((item) => <article className="message" key={item.id}><span className="message__avatar"><Icon name={item.author_user_id === actorId ? "user" : "chat"} size={19} /></span><div><div className="message__heading"><strong>{item.author_user_id === actorId ? "Вы" : perspective === "staff" && item.author_user_id === detail.applicant_user_id ? "Житель" : "Другая сторона"}</strong><time>{formatDate(item.created_at)}</time></div><p>{item.text}</p></div></article>) : <p className="muted-text">Сообщений пока нет.</p>}</div>
+    <div className="message-list">{detail.discussion.length ? detail.discussion.map((item) => <article className="message" key={item.id}><span className="message__avatar"><Icon name={item.author_user_id === actorId ? "user" : "chat"} size={19} /></span><div><div className="message__heading"><strong>{discussionAuthor(item, actorId, detail.applicant_user_id, perspective)}</strong><time>{formatDate(item.created_at)}</time></div><p>{item.text}</p></div></article>) : <p className="muted-text">Сообщений пока нет.</p>}</div>
     {canWrite && detail.status !== "cancelled" && <form className="comment-form" onSubmit={(event) => { event.preventDefault(); if (message.trim()) void run(() => addAccessDiscussionMessage(kind, id, message), "Сообщение отправлено", () => setMessage("")); }}><input aria-label="Сообщение в обсуждении заявки" value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Написать сообщение…" /><button type="submit" className="icon-button icon-button--blue" aria-label="Отправить сообщение" disabled={busy || !message.trim()}><Icon name="send" size={19} /></button></form>}
     {notice && <p className="form-success" role="status">{notice}</p>}
     {error && <p className="form-error" role="alert">{error}</p>}
@@ -149,8 +188,19 @@ export function EmployeeAccess({ houses, requests, grants, offers, staff, houseR
   const [decisionOutcome, setDecisionOutcome] = useState<"granted" | "denied">("granted");
   const [decisionNote, setDecisionNote] = useState("");
   const [selectedCase, setSelectedCase] = useState<{ kind: AccessRequestKind; id: string } | null>(null);
-  const [companyRequests, setCompanyRequests] = useState<AccessRequestDetail[]>([]);
+  const [residentOffset, setResidentOffset] = useState(0);
+  const [residentPage, setResidentPage] = useState<AccessRequestsPage | null>(null);
+  const [residentLoading, setResidentLoading] = useState(!isDemoMode);
+  const [residentError, setResidentError] = useState("");
+  const [houseOffset, setHouseOffset] = useState(0);
+  const [housePage, setHousePage] = useState<AccessRequestsPage | null>(null);
+  const [houseLoading, setHouseLoading] = useState(!isDemoMode);
+  const [houseError, setHouseError] = useState("");
+  const [companyOffset, setCompanyOffset] = useState(0);
+  const [companyPage, setCompanyPage] = useState<AccessRequestsPage | null>(null);
+  const [companyLoading, setCompanyLoading] = useState(!isDemoMode);
   const [companyRequestsError, setCompanyRequestsError] = useState("");
+  const [requestsRevision, setRequestsRevision] = useState(0);
   const [selectedGrantId, setSelectedGrantId] = useState("");
   const [grantAction, setGrantAction] = useState<"extend" | "revoke">("extend");
   const [grantValidTo, setGrantValidTo] = useState("");
@@ -158,18 +208,55 @@ export function EmployeeAccess({ houses, requests, grants, offers, staff, houseR
   const [confirmRevoke, setConfirmRevoke] = useState(false);
 
   useEffect(() => { setOfferHouseId(houses[0]?.id ?? ""); }, [companyId, houses]);
-  useEffect(() => { setSelectedStaffId(""); setConfirmStaffRevoke(false); }, [companyId]);
+  useEffect(() => { setSelectedStaffId(""); setConfirmStaffRevoke(false); setSelectedCase(null); setResidentOffset(0); setHouseOffset(0); }, [companyId]);
   useEffect(() => {
     if (isDemoMode) return;
     let cancelled = false;
-    void listCompanyRegistrationRequests().then((items) => { if (!cancelled) setCompanyRequests(items); })
-      .catch((reason) => { if (!cancelled) setCompanyRequestsError(reason instanceof Error ? reason.message : "Не удалось загрузить обращения УК"); });
+    setCompanyLoading(true); setCompanyRequestsError(""); setCompanyPage(null);
+    void listAccessRequestsPage("company_registration", companyOffset, PAGE_SIZE)
+      .then((result) => { if (!cancelled) setCompanyPage(result); })
+      .catch((reason) => { if (!cancelled) setCompanyRequestsError(reason instanceof HttpError && reason.status === 403 ? "Нет доступа к обращениям УК" : reason instanceof Error ? reason.message : "Не удалось загрузить обращения УК"); })
+      .finally(() => { if (!cancelled) setCompanyLoading(false); });
     return () => { cancelled = true; };
-  }, []);
+  }, [companyOffset, requestsRevision]);
+  useEffect(() => {
+    if (isDemoMode) return;
+    if (!companyId) { setResidentPage(null); setResidentError("Нет доступа к управляющей компании"); setResidentLoading(false); return; }
+    let cancelled = false;
+    setResidentLoading(true); setResidentError(""); setResidentPage(null);
+    void listAccessRequestsPage("resident", residentOffset, PAGE_SIZE, undefined, false, companyId)
+      .then((result) => { if (!cancelled) setResidentPage(result); })
+      .catch((reason) => { if (!cancelled) setResidentError(reason instanceof HttpError && reason.status === 403 ? "Нет доступа к заявкам этой УК" : reason instanceof Error ? reason.message : "Не удалось загрузить заявки жильцов"); })
+      .finally(() => { if (!cancelled) setResidentLoading(false); });
+    return () => { cancelled = true; };
+  }, [companyId, residentOffset, requestsRevision]);
+  useEffect(() => {
+    if (isDemoMode) return;
+    if (!companyId) { setHousePage(null); setHouseError("Нет доступа к управляющей компании"); setHouseLoading(false); return; }
+    let cancelled = false;
+    setHouseLoading(true); setHouseError(""); setHousePage(null);
+    void listAccessRequestsPage("house_addition", houseOffset, PAGE_SIZE, undefined, false, companyId)
+      .then((result) => { if (!cancelled) setHousePage(result); })
+      .catch((reason) => { if (!cancelled) setHouseError(reason instanceof HttpError && reason.status === 403 ? "Нет доступа к заявкам на дома" : reason instanceof Error ? reason.message : "Не удалось загрузить заявки на дома"); })
+      .finally(() => { if (!cancelled) setHouseLoading(false); });
+    return () => { cancelled = true; };
+  }, [companyId, houseOffset, requestsRevision]);
+
+  const visibleRequests = isDemoMode ? requests.slice(residentOffset, residentOffset + PAGE_SIZE) : residentPage?.items.map(residentRequestFromPage) ?? [];
+  const residentTotal = isDemoMode ? requests.length : residentPage?.total ?? 0;
+  const visibleHouseRequests = isDemoMode ? houseRequests.slice(houseOffset, houseOffset + PAGE_SIZE) : housePage?.items.map(houseRequestFromPage) ?? [];
+  const houseTotal = isDemoMode ? houseRequests.length : housePage?.total ?? 0;
+  const companyRequests = companyPage?.items ?? [];
+  const companyTotal = companyPage?.total ?? 0;
+
+  async function refreshRequests() {
+    await onChanged();
+    setRequestsRevision((current) => current + 1);
+  }
 
   async function run(action: () => Promise<unknown>, after: () => void, message: string) {
     setBusy(true); setError(""); setSuccess("");
-    try { await action(); await onChanged(); after(); setSuccess(message); }
+    try { await action(); await refreshRequests(); after(); setSuccess(message); }
     catch (reason) { setError(reason instanceof Error ? reason.message : "Не удалось сохранить изменение"); }
     finally { setBusy(false); }
   }
@@ -185,11 +272,7 @@ export function EmployeeAccess({ houses, requests, grants, offers, staff, houseR
     setGrantValidTo(""); setGrantReason(""); setConfirmRevoke(false);
   }
   async function refreshCompanyRequests() {
-    await onChanged();
-    if (!isDemoMode) {
-      setCompanyRequests(await listCompanyRegistrationRequests());
-      setCompanyRequestsError("");
-    }
+    await refreshRequests();
   }
   async function submitStaffRevoke() {
     const assignment = staff.find((item) => item.id === selectedStaffId);
@@ -221,13 +304,17 @@ export function EmployeeAccess({ houses, requests, grants, offers, staff, houseR
 
       {tab === "residents" && <div className="management-stack">
         <section className="panel form-panel">
-          <div className="section-heading"><h2>Заявки на доступ</h2><span className="count-badge">{requests.length}</span></div>
-          {requests.length === 0 && <p className="muted-text">Заявок пока нет.</p>}
-          <div className="management-list">{requests.map((request) => <article className="management-item" key={request.id}>
+          <div className="section-heading"><h2>Заявки на доступ</h2><span className="count-badge">{residentTotal}</span></div>
+          {!permissions.manageResidents && <p className="field-help">У вас нет права рассматривать заявки жильцов и выдавать им доступ. Просмотр заявок доступен.</p>}
+          {residentLoading && <p className="muted-text">Загружаем заявки…</p>}
+          {residentError && <p className="form-error" role="alert">{residentError}</p>}
+          {!residentLoading && !residentError && residentTotal === 0 && permissions.manageResidents && <p className="muted-text">Заявок пока нет.</p>}
+          <div className="management-list">{visibleRequests.map((request) => <article className="management-item" key={request.id}>
             <div><strong>{request.fullName}</strong><p>{houseName(request.houseId)} · подъезд №{request.entrance}, кв. {request.apartment}</p><small>{formatDate(request.createdAt)} · {request.status === "closed" ? request.outcome === "granted" ? "Доступ выдан" : "Отказано" : accessRequestStatusLabels[request.status]}</small>{request.decisionNote && <p>Пояснение: {request.decisionNote}</p>}</div>
             <div className="button-row"><button type="button" className="button button--soft" aria-expanded={selectedCase?.kind === "resident" && selectedCase.id === request.id} onClick={() => toggleCase("resident", request.id)}>Обсуждение</button>{permissions.manageResidents && request.status !== "closed" && request.status !== "cancelled" && <button type="button" className="button button--soft" onClick={() => { setDecisionId(request.id); setDecisionNote(""); }}>Решение</button>}</div>
           </article>)}</div>
-          {selectedCase?.kind === "resident" && requests.some((item) => item.id === selectedCase.id) && <AccessCasePanel key={selectedCase.id} kind="resident" id={selectedCase.id} perspective="staff" canManage={permissions.manageResidents} onChanged={onChanged} />}
+          {selectedCase?.kind === "resident" && visibleRequests.some((item) => item.id === selectedCase.id) && <AccessCasePanel key={selectedCase.id} kind="resident" id={selectedCase.id} perspective="staff" canManage={permissions.manageResidents} onChanged={refreshRequests} />}
+          <RequestPager total={residentTotal} offset={residentOffset} loading={residentLoading} onPage={(next) => { setResidentOffset(next); setSelectedCase(null); setDecisionId(""); }} />
           {permissions.manageResidents && decisionId && <div className="decision-box"><h3>Решение по заявке</h3><label className="field"><span>Результат</span><select value={decisionOutcome} onChange={(event) => setDecisionOutcome(event.target.value as "granted" | "denied")}><option value="granted">Выдать доступ</option><option value="denied">Отказать</option></select></label><label className="field"><span>Пояснение · обязательно</span><textarea rows={2} value={decisionNote} onChange={(event) => setDecisionNote(event.target.value)} placeholder="Причина решения" /></label><div className="button-row"><button className="button button--soft" type="button" onClick={() => setDecisionId("")}>Отмена</button><button className="button button--primary" type="button" disabled={busy || !decisionNote.trim()} onClick={() => void run(() => issuesClient.decideResidentRequest(decisionId, decisionOutcome, decisionNote), () => { setDecisionId(""); setDecisionNote(""); setSelectedCase(null); }, isDemoMode ? "Пробное решение сохранено" : "Решение отправлено")}>Сохранить решение</button></div></div>}
         </section>
 
@@ -241,7 +328,8 @@ export function EmployeeAccess({ houses, requests, grants, offers, staff, houseR
       {tab === "staff" && <div className="management-stack">
         <section className="panel form-panel">
           <div className="section-heading"><h2>Сотрудники</h2><span className="count-badge">{staff.length}</span></div>
-          {staff.length === 0 && <p className="muted-text">Назначений пока нет.</p>}
+          {!permissions.manageStaff && <p className="field-help">У вас нет права добавлять сотрудников, менять их права и отзывать назначения. Просмотр списка доступен.</p>}
+          {staff.length === 0 && permissions.manageStaff && <p className="muted-text">Назначений пока нет.</p>}
           <div className="management-list">{staff.map((person) => <article className="management-item" key={person.id}>
             <span className="small-icon"><Icon name="user" /></span>
             <div><strong>{person.fullName ?? person.phone}</strong><p>{person.phone}{!person.bound && " · ожидает входа"}</p><div className="rights-tags">{person.rights.manageStaff && <span>Сотрудники</span>}{person.rights.manageResidents && <span>Жильцы</span>}{person.rights.manageIssues && <span>Проблемы</span>}</div></div>
@@ -265,9 +353,26 @@ export function EmployeeAccess({ houses, requests, grants, offers, staff, houseR
 
       {tab === "houses" && <div className="management-stack">
         <section className="panel form-panel"><div className="section-heading"><h2>Дома УК</h2><span className="count-badge">{houses.length}</span></div>{houses.length === 0 && <p className="muted-text">Дома пока не подключены.</p>}<div className="management-list">{houses.map((house) => <article className="management-item" key={house.id}><span className="small-icon"><Icon name="building" /></span><div><strong>{house.address}</strong><p>{house.company}</p></div></article>)}</div></section>
+        {!permissions.manageStaff && <p className="field-help">У вас нет права отправлять заявки на подключение домов. Просмотр домов и своих заявок доступен.</p>}
         {permissions.manageStaff && <section className="panel form-panel"><h2>Запросить подключение дома</h2><p className="section-description">Дом добавит поддержка после проверки отдельной заявки.</p><form onSubmit={(event) => { event.preventDefault(); void run(() => issuesClient.createHouseRequest(newHouseAddress, undefined, newHouseNote, companyId), () => { setNewHouseAddress(""); setNewHouseNote(""); }, isDemoMode ? "Заявка сохранена только в браузере" : "Заявка отправлена поддержке"); }}><label className="field"><span>Адрес</span><input required value={newHouseAddress} onChange={(event) => setNewHouseAddress(event.target.value)} placeholder="Город, улица, дом" /></label><label className="field"><span>Пояснение</span><textarea rows={2} value={newHouseNote} onChange={(event) => setNewHouseNote(event.target.value)} placeholder="Дополнительные сведения" /></label><button type="submit" className="button button--primary button--wide management-submit" disabled={busy}>{isDemoMode ? "Сохранить пробную заявку" : "Отправить заявку"}</button></form></section>}
-        <section className="panel form-panel"><div className="section-heading"><h2>Заявки на дома</h2><span className="count-badge">{houseRequests.length}</span></div>{houseRequests.length === 0 && <p className="muted-text">Ваших заявок пока нет.</p>}<div className="management-list">{houseRequests.map((request) => <article className="management-item" key={request.id}><div><strong>{request.address}</strong><p>{request.explanation}</p><small>{accessRequestStatusLabels[request.status as AccessRequestStatus] ?? request.status} · {formatDate(request.createdAt)}</small></div><button type="button" className="button button--soft" aria-expanded={selectedCase?.kind === "house_addition" && selectedCase.id === request.id} onClick={() => toggleCase("house_addition", request.id)}>Обсуждение</button></article>)}</div>{selectedCase?.kind === "house_addition" && houseRequests.some((item) => item.id === selectedCase.id) && <AccessCasePanel key={selectedCase.id} kind="house_addition" id={selectedCase.id} perspective="applicant" onChanged={onChanged} />}</section>
-        {!isDemoMode && (companyRequests.length > 0 || companyRequestsError) && <section className="panel form-panel"><div className="section-heading"><h2>Мои обращения о регистрации УК</h2><span className="count-badge">{companyRequests.length}</span></div>{companyRequestsError && <p className="form-error" role="alert">{companyRequestsError}</p>}<div className="management-list">{companyRequests.map((request) => <article className="management-item" key={request.id}><div><strong>{request.proposed_company_name || "Регистрация УК"}</strong><small>{accessRequestStatusLabels[request.status] ?? request.status} · {formatDate(request.created_at)}</small></div><button type="button" className="button button--soft" aria-expanded={selectedCase?.kind === "company_registration" && selectedCase.id === request.id} onClick={() => toggleCase("company_registration", request.id)}>Обсуждение</button></article>)}</div>{selectedCase?.kind === "company_registration" && companyRequests.some((item) => item.id === selectedCase.id) && <AccessCasePanel key={selectedCase.id} kind="company_registration" id={selectedCase.id} perspective="applicant" onChanged={refreshCompanyRequests} />}</section>}
+        <section className="panel form-panel">
+          <div className="section-heading"><h2>Заявки на дома</h2><span className="count-badge">{houseTotal}</span></div>
+          {houseLoading && <p className="muted-text">Загружаем заявки…</p>}
+          {houseError && <p className="form-error" role="alert">{houseError}</p>}
+          {!houseLoading && !houseError && houseTotal === 0 && <p className="muted-text">Ваших заявок пока нет.</p>}
+          <div className="management-list">{visibleHouseRequests.map((request) => <article className="management-item" key={request.id}><div><strong>{request.address}</strong><p>{request.explanation}</p><small>{accessRequestStatusLabels[request.status as AccessRequestStatus] ?? request.status} · {formatDate(request.createdAt)}</small></div><button type="button" className="button button--soft" aria-expanded={selectedCase?.kind === "house_addition" && selectedCase.id === request.id} onClick={() => toggleCase("house_addition", request.id)}>Обсуждение</button></article>)}</div>
+          {selectedCase?.kind === "house_addition" && visibleHouseRequests.some((item) => item.id === selectedCase.id) && <AccessCasePanel key={selectedCase.id} kind="house_addition" id={selectedCase.id} perspective="applicant" onChanged={refreshRequests} />}
+          <RequestPager total={houseTotal} offset={houseOffset} loading={houseLoading} onPage={(next) => { setHouseOffset(next); setSelectedCase(null); }} />
+        </section>
+        {!isDemoMode && <section className="panel form-panel">
+          <div className="section-heading"><h2>Мои обращения о регистрации УК</h2><span className="count-badge">{companyTotal}</span></div>
+          {companyLoading && <p className="muted-text">Загружаем обращения…</p>}
+          {companyRequestsError && <p className="form-error" role="alert">{companyRequestsError}</p>}
+          {!companyLoading && !companyRequestsError && companyTotal === 0 && <p className="muted-text">Обращений пока нет.</p>}
+          <div className="management-list">{companyRequests.map((request) => <article className="management-item" key={request.id}><div><strong>{request.proposed_company_name || "Регистрация УК"}</strong><small>{accessRequestStatusLabels[request.status] ?? request.status} · {formatDate(request.created_at)}</small></div><button type="button" className="button button--soft" aria-expanded={selectedCase?.kind === "company_registration" && selectedCase.id === request.id} onClick={() => toggleCase("company_registration", request.id)}>Обсуждение</button></article>)}</div>
+          {selectedCase?.kind === "company_registration" && companyRequests.some((item) => item.id === selectedCase.id) && <AccessCasePanel key={selectedCase.id} kind="company_registration" id={selectedCase.id} perspective="applicant" onChanged={refreshCompanyRequests} />}
+          <RequestPager total={companyTotal} offset={companyOffset} loading={companyLoading} onPage={(next) => { setCompanyOffset(next); setSelectedCase(null); }} />
+        </section>}
       </div>}
     </div>
   );

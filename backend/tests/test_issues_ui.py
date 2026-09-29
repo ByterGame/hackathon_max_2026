@@ -205,10 +205,22 @@ class IssueUiTests(unittest.IsolatedAsyncioTestCase):
             kind="resident_comment",
             body="длинный текст " * 260 + "КОНЕЦ",
         )
+        staff_id = uuid4()
+        staff_message = SimpleNamespace(
+            id=uuid4(),
+            created_at=stamp + timedelta(seconds=2),
+            author_user_id=staff_id,
+            kind="official_uk",
+            body="Ответ сотрудника",
+        )
 
         async def scalars(statement):
             entity = statement.column_descriptions[0]["entity"]
-            rows = [report] if entity is issues_ui.IssueReport else [message]
+            rows = (
+                [report]
+                if entity is issues_ui.IssueReport
+                else [message, staff_message]
+            )
             return SimpleNamespace(all=lambda: rows)
 
         self.session.scalars = AsyncMock(side_effect=scalars)
@@ -223,6 +235,10 @@ class IssueUiTests(unittest.IsolatedAsyncioTestCase):
             )
         self.assertIn("Исходное описание", first.text)
         self.assertIn("КОНЕЦ", second.text)
+        self.assertIn("Ваше дополнение", first.text)
+        self.assertIn("УК: Ответ сотрудника", second.text)
+        self.assertNotIn(str(self.actor.id), first.text + second.text)
+        self.assertNotIn(str(staff_id), first.text + second.text)
         self.assertIn(
             f"i:discussion:{card_id}:2",
             [button.payload for row in first.buttons for button in row],
@@ -256,6 +272,7 @@ class IssueUiTests(unittest.IsolatedAsyncioTestCase):
             )
             for number in range(40)
         ]
+        rows.insert(0, SimpleNamespace(id=uuid4(), created_at=stamp, action="comment_added", actor_user_id=self.actor.id))
         self.session.scalars = AsyncMock(return_value=SimpleNamespace(all=lambda: rows))
         with (
             patch.object(
@@ -278,6 +295,8 @@ class IssueUiTests(unittest.IsolatedAsyncioTestCase):
             [button.payload for row in first.buttons for button in row],
         )
         self.assertIn("event-39", last.text)
+        self.assertNotIn("comment_added", first.text + last.text)
+        self.assertNotIn(str(self.actor.id), first.text + last.text)
 
     async def test_scope_creates_shared_draft_before_review(self) -> None:
         house_id, category_id, draft_id = uuid4(), uuid4(), uuid4()

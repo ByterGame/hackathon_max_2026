@@ -11,7 +11,7 @@ export interface StaffMembership {
 
 export interface CurrentUser {
   id: string;
-  kind: "unassigned" | "resident" | "employee" | "support";
+  kind: "unassigned" | "resident" | "employee" | "support" | "admin";
   full_name: string | null;
   phone_number: string | null;
   phone_verified: boolean;

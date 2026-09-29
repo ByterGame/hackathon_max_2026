@@ -11,12 +11,15 @@ from src.db.models import (
     CompanyRegistrationRequest,
     House,
     HouseAdditionRequest,
+    ResidentOffer,
     StaffAssignment,
+    SupportInvitation,
     User,
 )
 from src.domain.access.common import (
     audit,
     commit_or_conflict,
+    lock_phone_role,
     require_row,
     require_staff,
     require_support,
@@ -39,9 +42,9 @@ async def create_company_registration(
     free_text: str,
     proposed_company_name: str | None,
 ) -> CompanyRegistrationRequest:
-    if actor.kind == "support":
+    if actor.kind in {"support", "admin"}:
         raise AccessRuleError(
-            403, "role_conflict", "Поддержка не подаёт обращения от имени УК"
+            403, "role_conflict", "Оператор или администратор не подаёт обращение от имени УК"
         )
     require_verified_phone(actor)
     now = utcnow()
@@ -97,10 +100,31 @@ async def decide_company_registration(
             raise AccessRuleError(
                 400, "company_name_required", "Укажите название одобренной УК"
             )
+        phone = normalize_phone(request.phone_number)
+        await lock_phone_role(session, phone)
+        competing_support = await session.scalar(
+            select(SupportInvitation.id).where(
+                SupportInvitation.phone_number == phone,
+                SupportInvitation.accepted_at.is_(None),
+                SupportInvitation.revoked_at.is_(None),
+            )
+        )
+        competing_resident = await session.scalar(
+            select(ResidentOffer.id).where(
+                ResidentOffer.phone_number == phone,
+                ResidentOffer.status == "pending",
+            )
+        )
+        if competing_support is not None or competing_resident is not None:
+            raise AccessRuleError(
+                409,
+                "role_conflict",
+                "На этот номер уже выдано приглашение другой роли",
+            )
         matching_user = await session.scalar(
             select(User)
             .where(
-                User.phone_number == request.phone_number,
+                User.phone_number == phone,
                 User.phone_verified_at.is_not(None),
             )
             .with_for_update()
@@ -123,7 +147,7 @@ async def decide_company_registration(
         assignment = StaffAssignment(
             id=uuid4(),
             company_id=company.id,
-            phone_number=request.phone_number,
+            phone_number=phone,
             user_id=matching_user.id if matching_user is not None else None,
             can_manage_staff=True,
             can_manage_residents=True,

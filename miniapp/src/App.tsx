@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { getCurrentUser, verifyPhoneWithMax, type CurrentUser } from "./features/auth/integrations/client_api";
 import { isDemoMode, issuesClient, type AppSnapshot } from "./features/issues/integrations/client_api";
 import { demoResident, type Role } from "./features/issues/types";
+import { AdminHome } from "./pages/AdminHome";
 import { AccessRequest } from "./pages/AccessRequest";
 import { CompanyRegistration } from "./pages/CompanyRegistration";
 import { EmployeeAccess } from "./pages/EmployeeAccess";
@@ -14,6 +15,8 @@ import { OnboardingHome } from "./pages/OnboardingHome";
 import { PhoneGate } from "./pages/PhoneGate";
 import { ResidentHome } from "./pages/ResidentHome";
 import { RoleSelection } from "./pages/RoleSelection";
+import { SupportInvitationNotice } from "./pages/SupportInvitation";
+import { SupportHome } from "./pages/SupportHome";
 import { Icon } from "./shared/common_ui/Icon";
 
 type Screen = "home" | "new" | "detail" | "access" | "registration" | "requests" | "employee-access";
@@ -34,7 +37,7 @@ export function App() {
 
   const applyAccount = useCallback((user: CurrentUser) => {
     setAccount(user);
-    setRole(user.phone_verified && user.kind !== "support" ? user.kind === "employee" ? "employee" : "resident" : null);
+    setRole(user.phone_verified && user.kind !== "support" && user.kind !== "admin" ? user.kind === "employee" ? "employee" : "resident" : null);
     setScreen("home");
     setAuthError("");
   }, []);
@@ -122,7 +125,9 @@ export function App() {
         {!isDemoMode && authLoading && <div className="loading-state">Входим через MAX…</div>}
         {!isDemoMode && !authLoading && authError && !account && <div className="panel error-state" role="alert">{authError}<button type="button" className="button button--soft" onClick={() => void loadSession()}>Повторить</button></div>}
         {!isDemoMode && !authLoading && account && !account.phone_verified && <PhoneGate busy={authBusy} error={authError} onConfirm={() => void confirmPhone()} />}
-        {!isDemoMode && !authLoading && account?.phone_verified && account.kind === "support" && <div className="page"><div className="panel empty-state"><Icon name="shield" size={30} /><strong>Кабинет поддержки</strong><p>Обращения УК и домов рассматриваются через бот MAX.</p></div></div>}
+        {!isDemoMode && !authLoading && account?.phone_verified && account.kind === "support" && <SupportHome actorId={account.id} />}
+        {!isDemoMode && !authLoading && account?.phone_verified && account.kind === "admin" && <AdminHome />}
+        {!isDemoMode && !authLoading && account?.phone_verified && account.kind === "unassigned" && <SupportInvitationNotice onAccepted={async () => applyAccount(await getCurrentUser())} />}
 
         {isDemoMode && !role && screen === "home" && <RoleSelection onContinue={selectDemoRole} onRegister={() => navigate("registration")} />}
         {(isDemoMode || account?.phone_verified) && screen === "registration" && <CompanyRegistration onBack={() => { if (role) void refresh(role); else if (isDemoMode) setRole("resident"); navigate("home"); }} onOpenRequest={(id) => void openSubmittedRegistration(id)} />}

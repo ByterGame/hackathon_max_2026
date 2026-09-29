@@ -19,6 +19,7 @@ from src.bot.diagnostics import (
     message_event_type,
     safe_stack,
 )
+from src.bot.handlers import admin_ui
 from src.bot.handlers.access_text import handle_access_text
 from src.bot.handlers.access_ui import handle_action as handle_access_action
 from src.bot.handlers.access_ui import handle_text as handle_access_input
@@ -58,7 +59,8 @@ GENERAL_HELP = (
     "В любой момент можно отправить /cancel или нажать «Главное меню».\n"
     "Текстовые команды тоже доступны: /access help, /issuehelp, /drafthelp, "
     "/notificationhelp, /filehelp, /files UUID_карточки, "
-    "/getfile UUID_карточки UUID_файла. /whoami показывает ваш MAX ID."
+    "/getfile UUID_карточки UUID_файла. /whoami показывает ваш MAX ID. "
+    "Администратору доступна команда /admin."
 )
 
 
@@ -93,6 +95,8 @@ async def _reserve_message(
 
 
 def _home(actor: User) -> UiReply:
+    if actor.kind == "admin":
+        return admin_ui.menu()
     if actor.kind == "support":
         return UiReply(
             "Кабинет поддержки. Выберите, с чем работать:",
@@ -134,6 +138,7 @@ def _home(actor: User) -> UiReply:
     return UiReply(
         "Добро пожаловать. Начните с подключения к дому или регистрации УК.",
         [
+            [Button("Приглашения поддержки", "adm:invites")],
             [Button("Подключиться к дому", "a:apply")],
             [Button("Мои заявки", "a:requests:resident")],
             [Button("Мои обращения УК", "a:requests:company_registration")],
@@ -260,6 +265,9 @@ async def _handle_action(session: AsyncSession, actor: User, payload: str) -> Ui
     if payload.startswith("n:"):
         await clear_dialog(session, actor.id)
         return await _notification_action(session, actor, payload)
+    if payload.startswith("adm:"):
+        result = await admin_ui.handle_action(session, actor, payload)
+        return result or UiReply("Кнопка больше не действует. Откройте кабинет заново.")
     if payload.startswith("f:"):
         await clear_dialog(session, actor.id)
         parts = payload.split(":")
@@ -291,6 +299,8 @@ async def _handle_dialog_text(
         result = await handle_access_input(session, actor, dialog, text)
     elif dialog.flow_kind.startswith("issue_"):
         result = await handle_issue_input(session, actor, dialog, text)
+    elif dialog.flow_kind.startswith("admin_"):
+        result = await admin_ui.handle_text(session, actor, dialog, text)
     else:
         result = None
     return result or UiReply(
@@ -333,6 +343,8 @@ def build_router(
         bot: object | None,
     ) -> tuple[UiReply, str | None]:
         fields = command.split()
+        if fields and fields[0] == "/admin":
+            return await admin_ui.handle_command(session, actor, command), None
         if fields and fields[0].lower() == "/files":
             if len(fields) != 2:
                 return UiReply("Формат: /files UUID_карточки"), None
