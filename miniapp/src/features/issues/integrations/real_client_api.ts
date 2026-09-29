@@ -46,7 +46,7 @@ interface WireRequest {
   id: string;
   kind: string;
   status: ResidentRequest["status"];
-  outcome?: "granted" | "denied" | null;
+  outcome?: "granted" | "approved" | "denied" | "rejected" | null;
   decision_note?: string | null;
   decided_at?: string | null;
   created_at: string;
@@ -207,7 +207,7 @@ function residentRequest(item: WireRequest): ResidentRequest {
     entrance: item.submitted_entrance_number ?? 0,
     apartment: item.submitted_apartment_number ?? 0,
     status: item.status,
-    outcome: item.outcome ?? undefined,
+    outcome: item.outcome === "granted" || item.outcome === "denied" ? item.outcome : undefined,
     decisionNote: item.decision_note ?? undefined,
     decidedAt: item.decided_at ?? undefined,
     createdAt: item.created_at,
@@ -221,6 +221,8 @@ function registrationRequest(item: WireRequest): CompanyRegistrationRequest {
     firstStaffPhone: item.phone_number ?? "",
     explanation: item.free_text ?? "",
     status: item.status,
+    outcome: item.outcome === "approved" || item.outcome === "rejected" ? item.outcome : undefined,
+    decisionNote: item.decision_note ?? undefined,
     createdAt: item.created_at,
   };
 }
@@ -233,6 +235,8 @@ function houseRequest(item: WireRequest): HouseAdditionRequest {
     address: item.entered_address ?? "",
     explanation: item.free_text ?? undefined,
     status: item.status,
+    outcome: item.outcome === "approved" || item.outcome === "rejected" ? item.outcome : undefined,
+    decisionNote: item.decision_note ?? undefined,
     createdAt: item.created_at,
   };
 }

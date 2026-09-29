@@ -1,25 +1,31 @@
 import { useState } from "react";
 
 import { IssueCard } from "../features/issues/ui/IssueCard";
-import { type House, type Issue, type ResidentGrant, type ResidentRequest } from "../features/issues/types";
+import { type CompanyRegistrationRequest, type House, type HouseAdditionRequest, type Issue, type ResidentGrant, type ResidentRequest } from "../features/issues/types";
 import { Icon } from "../shared/common_ui/Icon";
 import { ScreenHeader } from "../shared/common_ui/ScreenHeader";
+import { ApplicantRequestsList, type ApplicantCase } from "./MyRequests";
 
 interface ResidentHomeProps {
   houses: House[];
   issues: Issue[];
   grants: ResidentGrant[];
   requests: ResidentRequest[];
+  companyRequests: CompanyRegistrationRequest[];
+  houseRequests: HouseAdditionRequest[];
   currentUserId: string;
   selectedHouseId: string;
   onSelectHouse: (id: string) => void;
   onNew: () => void;
   onIssue: (id: string) => void;
   onAccess: () => void;
+  onRegister: () => void;
+  onRequest: (request: ApplicantCase) => void;
+  onAllRequests: () => void;
   onChangeRole?: () => void;
 }
 
-export function ResidentHome({ houses, issues, grants, requests, currentUserId, selectedHouseId, onSelectHouse, onNew, onIssue, onAccess, onChangeRole }: ResidentHomeProps) {
+export function ResidentHome({ houses, issues, grants, requests, companyRequests, houseRequests, currentUserId, selectedHouseId, onSelectHouse, onNew, onIssue, onAccess, onRegister, onRequest, onAllRequests, onChangeRole }: ResidentHomeProps) {
   const [closed, setClosed] = useState(false);
   const [mineOnly, setMineOnly] = useState(false);
   const myGrants = grants.filter((item) => item.status !== "revoked" && item.status !== "expired" && (!item.validUntil || new Date(item.validUntil).getTime() > Date.now()));
@@ -40,10 +46,12 @@ export function ResidentHome({ houses, issues, grants, requests, currentUserId, 
         <span>{myHouseIds.length > 1 ? <select className="house-picker" aria-label="Выберите дом" value={house?.id} onChange={(event) => onSelectHouse(event.target.value)}>{myHouseIds.map((id) => <option key={id} value={id}>{houses.find((houseItem) => houseItem.id === id)?.address}</option>)}</select> : <strong>{house?.address ?? "Дом не выбран"}</strong>}<small><Icon name="check" size={15} /> {myGrants.filter((item) => item.houseId === house?.id).length > 1 ? `Доступ: ${myGrants.filter((item) => item.houseId === house?.id).length} квартиры` : `Доступ: подъезд №${grant?.entrance}, кв. ${grant?.apartment}`}</small></span>
       </div>
       <button type="button" className="text-link" onClick={onAccess}>Заявка на доступ к другому дому <Icon name="chevron" size={17} /></button>
+      <button type="button" className="text-link" onClick={onRegister}>Представляете УК? Подключить компанию <Icon name="chevron" size={17} /></button>
 
       <button type="button" className="button button--primary button--wide create-button" onClick={onNew} disabled={!house}><Icon name="plus" size={25} /> Сообщить о проблеме</button>
 
-      {requests.length > 0 && <button type="button" className="request-hint" onClick={onAccess}><Icon name="clock" size={18} /> Заявки на доступ: {requests.length} <Icon name="chevron" size={17} /></button>}
+      <ApplicantRequestsList residentRequests={requests} companyRequests={companyRequests} houseRequests={houseRequests} onOpen={onRequest} limit={3} />
+      {requests.length + companyRequests.length + houseRequests.length > 3 && <button type="button" className="text-link" onClick={onAllRequests}>Все заявки <Icon name="chevron" size={17} /></button>}
 
       <section className="issues-section" id="issues-list">
         <div className="section-heading"><h2>Проблемы дома</h2><span className="count-badge">{issues.filter((item) => item.houseId === house?.id).length}</span></div>

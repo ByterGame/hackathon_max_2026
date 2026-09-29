@@ -103,6 +103,8 @@ export interface CompanyRegistrationRequest {
   firstStaffPhone: string;
   explanation: string;
   status: string;
+  outcome?: "approved" | "rejected";
+  decisionNote?: string;
   createdAt: string;
 }
 
@@ -113,6 +115,8 @@ export interface HouseAdditionRequest {
   address: string;
   explanation?: string;
   status: string;
+  outcome?: "approved" | "rejected";
+  decisionNote?: string;
   createdAt: string;
 }
 

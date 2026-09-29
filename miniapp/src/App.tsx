@@ -9,18 +9,20 @@ import { EmployeeAccess } from "./pages/EmployeeAccess";
 import { EmployeeHome } from "./pages/EmployeeHome";
 import { IssueComposer } from "./pages/IssueComposer";
 import { IssueDetail } from "./pages/IssueDetail";
+import { MyRequests, type ApplicantCase } from "./pages/MyRequests";
 import { OnboardingHome } from "./pages/OnboardingHome";
 import { PhoneGate } from "./pages/PhoneGate";
 import { ResidentHome } from "./pages/ResidentHome";
 import { RoleSelection } from "./pages/RoleSelection";
 import { Icon } from "./shared/common_ui/Icon";
 
-type Screen = "home" | "new" | "detail" | "access" | "registration" | "employee-access";
+type Screen = "home" | "new" | "detail" | "access" | "registration" | "requests" | "employee-access";
 
 export function App() {
   const [role, setRole] = useState<Role | null>(null);
   const [screen, setScreen] = useState<Screen>("home");
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
+  const [selectedRequest, setSelectedRequest] = useState<ApplicantCase | null>(null);
   const [selectedHouseId, setSelectedHouseId] = useState("pushkina-5");
   const [selectedCompanyId, setSelectedCompanyId] = useState("");
   const [snapshot, setSnapshot] = useState<AppSnapshot | null>(null);
@@ -81,6 +83,17 @@ export function App() {
     window.scrollTo({ top: 0, behavior: "auto" });
   }
 
+  function openRequest(request: ApplicantCase | null) {
+    setSelectedRequest(request);
+    navigate("requests");
+  }
+
+  async function openSubmittedRegistration(id: string) {
+    await refresh("resident");
+    if (!role) setRole("resident");
+    openRequest({ kind: "company_registration", id });
+  }
+
   async function openIssue(id: string) {
     if (role) await refresh(role);
     setSelectedIssueId(id);
@@ -112,16 +125,17 @@ export function App() {
         {!isDemoMode && !authLoading && account?.phone_verified && account.kind === "support" && <div className="page"><div className="panel empty-state"><Icon name="shield" size={30} /><strong>Кабинет поддержки</strong><p>Обращения УК и домов рассматриваются через бот MAX.</p></div></div>}
 
         {isDemoMode && !role && screen === "home" && <RoleSelection onContinue={selectDemoRole} onRegister={() => navigate("registration")} />}
-        {(isDemoMode || account?.phone_verified) && screen === "registration" && <CompanyRegistration onBack={() => navigate("home")} />}
+        {(isDemoMode || account?.phone_verified) && screen === "registration" && <CompanyRegistration onBack={() => { if (role) void refresh(role); else if (isDemoMode) setRole("resident"); navigate("home"); }} onOpenRequest={(id) => void openSubmittedRegistration(id)} />}
 
         {role && !snapshot && !dataError && <div className="loading-state">Загружаем данные…</div>}
         {role && dataError && <div className="panel error-state" role="alert">{dataError}<button type="button" className="button button--soft" onClick={() => void refresh(role)}>Повторить</button></div>}
 
-        {role === "resident" && snapshot && screen === "home" && !hasResidentAccess && <OnboardingHome requests={snapshot.residentRequests} offers={snapshot.residentOffers} onAccess={() => navigate("access")} onRegister={() => navigate("registration")} />}
-        {role === "resident" && snapshot && screen === "home" && hasResidentAccess && <ResidentHome houses={snapshot.houses} issues={snapshot.issues} grants={snapshot.residentGrants} requests={snapshot.residentRequests} currentUserId={isDemoMode ? demoResident.id : account?.id ?? ""} selectedHouseId={activeHouseId ?? ""} onSelectHouse={setSelectedHouseId} onNew={() => navigate("new")} onIssue={(id) => void openIssue(id)} onAccess={() => navigate("access")} onChangeRole={isDemoMode ? changeDemoRole : undefined} />}
+        {role === "resident" && snapshot && screen === "home" && !hasResidentAccess && <OnboardingHome requests={snapshot.residentRequests} companyRequests={snapshot.companyRequests} houseRequests={snapshot.houseRequests} offers={snapshot.residentOffers} onAccess={() => navigate("access")} onRegister={() => navigate("registration")} onRequest={openRequest} onAllRequests={() => openRequest(null)} />}
+        {role === "resident" && snapshot && screen === "home" && hasResidentAccess && <ResidentHome houses={snapshot.houses} issues={snapshot.issues} grants={snapshot.residentGrants} requests={snapshot.residentRequests} companyRequests={snapshot.companyRequests} houseRequests={snapshot.houseRequests} currentUserId={isDemoMode ? demoResident.id : account?.id ?? ""} selectedHouseId={activeHouseId ?? ""} onSelectHouse={setSelectedHouseId} onNew={() => navigate("new")} onIssue={(id) => void openIssue(id)} onAccess={() => navigate("access")} onRegister={() => navigate("registration")} onRequest={openRequest} onAllRequests={() => openRequest(null)} onChangeRole={isDemoMode ? changeDemoRole : undefined} />}
+        {role === "resident" && snapshot && screen === "requests" && <MyRequests residentRequests={snapshot.residentRequests} companyRequests={snapshot.companyRequests} houseRequests={snapshot.houseRequests} initialCase={selectedRequest} onBack={() => navigate("home")} onChanged={() => refresh("resident")} />}
         {role === "employee" && snapshot && screen === "home" && <EmployeeHome houses={snapshot.houses} issues={snapshot.issues} onIssue={(id) => void openIssue(id)} onAccess={() => navigate("employee-access")} onChangeRole={isDemoMode ? changeDemoRole : undefined} />}
         {role === "resident" && snapshot && screen === "new" && residentHouse && <IssueComposer house={residentHouse} categories={snapshot.categories} onBack={() => navigate("home")} onOpenIssue={(id) => void openIssue(id)} />}
-        {role === "resident" && snapshot && screen === "access" && <AccessRequest houses={snapshot.houses} requests={snapshot.residentRequests} offers={snapshot.residentOffers} initialName={isDemoMode ? demoResident.name : account?.full_name ?? undefined} onBack={() => navigate("home")} onChanged={() => refresh("resident")} />}
+        {role === "resident" && snapshot && screen === "access" && <AccessRequest houses={snapshot.houses} requests={snapshot.residentRequests} offers={snapshot.residentOffers} initialName={isDemoMode ? demoResident.name : account?.full_name ?? undefined} onBack={() => navigate("home")} onChanged={() => refresh("resident")} onOpenRequest={(id) => openRequest({ kind: "resident", id })} />}
         {role === "employee" && snapshot && screen === "employee-access" && <EmployeeAccess houses={companyHouses} requests={snapshot.residentRequests.filter((item) => companyHouseIds.has(item.houseId))} grants={snapshot.residentGrants.filter((item) => companyHouseIds.has(item.houseId))} offers={snapshot.residentOffers.filter((item) => companyHouseIds.has(item.houseId))} staff={snapshot.staffAssignments.filter((item) => item.companyId === activeCompanyId)} houseRequests={snapshot.houseRequests.filter((item) => item.companyId === activeCompanyId)} permissions={staffPermissions} companyId={activeCompanyId} companies={staffMemberships.map((item) => ({ id: item.company_id, name: item.company_name }))} onCompanyChange={setSelectedCompanyId} onBack={() => navigate("home")} onChanged={() => refresh("employee")} />}
         {role && snapshot && screen === "detail" && selectedIssue && selectedHouse && <IssueDetail issue={selectedIssue} house={selectedHouse} role={role} currentUserId={isDemoMode ? demoResident.id : account?.id ?? ""} canManageIssues={role === "resident" || issueStaffPermission} categories={snapshot.categories} relatedIssues={snapshot.issues.filter((item) => item.houseId === selectedIssue.houseId && item.id !== selectedIssue.id && item.status !== "closed")} onBack={() => navigate("home")} onChanged={() => refresh(role)} onMerged={async (id) => { await refresh(role); setSelectedIssueId(id); }} />}
         {role && snapshot && screen === "detail" && (!selectedIssue || !selectedHouse) && <div className="empty-state panel"><strong>Карточка не найдена</strong><button type="button" className="button button--soft" onClick={() => navigate("home")}>Вернуться к списку</button></div>}
