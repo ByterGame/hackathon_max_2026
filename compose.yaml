@@ -1,6 +1,7 @@
 services:
   db:
     image: postgres:17.11-alpine3.24
+    command: ["postgres", "-c", "port=${DB_PORT:?Set DB_PORT in .env}"]
     environment:
       POSTGRES_DB: "${DB_NAME:?Set DB_NAME in .env}"
       POSTGRES_USER: "${DB_USER:?Set DB_USER in .env}"
@@ -15,13 +16,28 @@ services:
       retries: 10
     restart: unless-stopped
 
-  app:
+  migrate:
     build: .
     image: hackathon-max-app:local
     pull_policy: build
     depends_on:
       db:
         condition: service_healthy
+    command: ["alembic", "-c", "alembic.ini", "upgrade", "head"]
+    environment:
+      DB_HOST: "${DB_HOST:?Set DB_HOST in .env}"
+      DB_PORT: "${DB_PORT:?Set DB_PORT in .env}"
+      DB_NAME: "${DB_NAME:?Set DB_NAME in .env}"
+      DB_USER: "${DB_USER:?Set DB_USER in .env}"
+      DB_PASSWORD: "${DB_PASSWORD:?Set DB_PASSWORD in .env}"
+
+  app:
+    build: .
+    image: hackathon-max-app:local
+    pull_policy: build
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     environment:
       BOT_TOKEN: "${BOT_TOKEN:?Set BOT_TOKEN in .env}"
       PORT: "${PORT:?Set PORT in .env}"
@@ -30,6 +46,12 @@ services:
       DB_NAME: "${DB_NAME:?Set DB_NAME in .env}"
       DB_USER: "${DB_USER:?Set DB_USER in .env}"
       DB_PASSWORD: "${DB_PASSWORD:?Set DB_PASSWORD in .env}"
+      GROQ_API_KEY: "${GROQ_API_KEY:-}"
+      GROQ_SEND_REAL_DATA: "${GROQ_SEND_REAL_DATA:-0}"
+      GROQ_MODEL: "${GROQ_MODEL:-openai/gpt-oss-20b}"
+      FILE_STORAGE_ROOT: "${FILE_STORAGE_ROOT:?Set FILE_STORAGE_ROOT in .env}"
+    volumes:
+      - private_files:${FILE_STORAGE_ROOT:?Set FILE_STORAGE_ROOT in .env}
     ports:
       - "127.0.0.1:${PORT:?Set PORT in .env}:${PORT:?Set PORT in .env}"
     healthcheck:
@@ -42,10 +64,25 @@ services:
   bot:
     image: hackathon-max-app:local
     pull_policy: never
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     command: ["python", "-m", "src.bot.main"]
     environment:
       BOT_TOKEN: "${BOT_TOKEN:?Set BOT_TOKEN in .env}"
+      DB_HOST: "${DB_HOST:?Set DB_HOST in .env}"
+      DB_PORT: "${DB_PORT:?Set DB_PORT in .env}"
+      DB_NAME: "${DB_NAME:?Set DB_NAME in .env}"
+      DB_USER: "${DB_USER:?Set DB_USER in .env}"
+      DB_PASSWORD: "${DB_PASSWORD:?Set DB_PASSWORD in .env}"
+      GROQ_API_KEY: "${GROQ_API_KEY:-}"
+      GROQ_SEND_REAL_DATA: "${GROQ_SEND_REAL_DATA:-0}"
+      GROQ_MODEL: "${GROQ_MODEL:-openai/gpt-oss-20b}"
+      FILE_STORAGE_ROOT: "${FILE_STORAGE_ROOT:?Set FILE_STORAGE_ROOT in .env}"
+    volumes:
+      - private_files:${FILE_STORAGE_ROOT:?Set FILE_STORAGE_ROOT in .env}
     restart: unless-stopped
 
 volumes:
   postgres_data:
+  private_files:
