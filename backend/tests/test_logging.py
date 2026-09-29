@@ -127,12 +127,16 @@ class JsonLogFormatterTests(unittest.TestCase):
             args=(),
             exc_info=None,
         )
+        record.provider_error_code = 7
+        record.provider_error_kind = "scope_mismatch"
         token = current_request_id.set("request-123")
         try:
             payload = json.loads(JsonLogFormatter().format(record))
         finally:
             current_request_id.reset(token)
         self.assertEqual(payload["request_id"], "request-123")
+        self.assertEqual(payload["provider_error_code"], 7)
+        self.assertEqual(payload["provider_error_kind"], "scope_mismatch")
         self.assertIsNone(current_request_id.get())
 
     def test_exception_info_is_not_implicitly_formatted(self) -> None:

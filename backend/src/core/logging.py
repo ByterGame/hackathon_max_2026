@@ -21,6 +21,8 @@ _EXTRA_FIELDS = (
     "status_code",
     "duration_ms",
     "error_code",
+    "provider_error_code",
+    "provider_error_kind",
     "exception_type",
     "exception_message",
     "stack",

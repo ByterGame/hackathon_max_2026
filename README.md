@@ -11,9 +11,9 @@ PostgreSQL.
 Для запуска нужен файл `.env` в корне репозитория. Для нового файла используйте
 `.env.example` как образец; существующий `.env` не перезаписывайте. Обязательны
 `BOT_TOKEN`, `PORT`, все `DB_*`, `FILE_STORAGE_ROOT`, `ISSUE_AI_PROVIDER`,
-`GIGACHAT_SEND_REAL_DATA`, `GIGACHAT_SCOPE`, `GIGACHAT_MODEL` и
-`GIGACHAT_AUTH_URL`. Для обязательных параметров Compose не подставляет
-значения по умолчанию. В образце `BOT_TOKEN`, `PORT`, `DB_*` и
+`GIGACHAT_SEND_REAL_DATA`, `GIGACHAT_SCOPE`, `GIGACHAT_MODEL`,
+`GIGACHAT_AUTH_URL` и `GIGACHAT_VERIFY_SSL`. Для обязательных параметров
+Compose не подставляет значения по умолчанию. В образце `BOT_TOKEN`, `PORT`, `DB_*` и
 `FILE_STORAGE_ROOT` оставлены пустыми: заполните их явно. Для запуска в
 Compose можно выбрать `PORT=8000`, `DB_HOST=db`, `DB_PORT=5432`,
 `DB_NAME=hackathon`, `DB_USER=hackathon`,
@@ -57,11 +57,12 @@ docker compose up --build
 Токен доступа GigaChat действует 30 минут по документации провайдера; сервис
 кэширует его в памяти процесса и обновляет незадолго до истечения срока.
 Перед включением передачи реальных обращений проверьте условия использования
-и правила обработки данных. Реальный ключ и вызов GigaChat API на VPS ещё не
-проверены.
+и правила обработки данных. При недоступности GigaChat сервис использует
+локальную подсказку и записывает причину переключения в журнал.
 
-Проверка TLS для GigaChat остаётся включённой: необходим доверенный корневой
-сертификат Минцифры по [инструкции GigaChat](https://developers.sber.ru/docs/ru/gigachat/certificates).
+При `GIGACHAT_VERIFY_SSL=1` проверка TLS для GigaChat включена: необходим
+доверенный корневой сертификат Минцифры по
+[инструкции GigaChat](https://developers.sber.ru/docs/ru/gigachat/certificates).
 Если его нет в стандартном хранилище контейнера, получите официальный PEM
 по этой инструкции и разместите файл на VPS вне репозитория, например
 `/opt/hackathon/certs/gigachat-ca.pem`. Проверьте файл и соединение на VPS:
@@ -73,7 +74,11 @@ openssl s_client -connect api.giga.chat:443 -servername api.giga.chat -verify_ho
 
 Во второй проверке ожидается `Verify return code: 0 (ok)`. Если для цепочки
 нужен также выпускающий сертификат, используйте PEM-набор с необходимыми
-доверенными сертификатами. Проверку TLS не отключайте.
+доверенными сертификатами. Для временной диагностики можно установить
+`GIGACHAT_VERIFY_SSL=0`: проверка сертификата отключится только для запросов
+к GigaChat (получения токена и вызова модели). В таком режиме сервер нельзя
+удостоверить, поэтому ключ и тексты обращений могут быть перехвачены;
+верните `1` после диагностики. Ошибку HTTP 403 отключение TLS не исправляет.
 Чтобы передать PEM в `app` и `bot` только для чтения, скопируйте на VPS
 `compose.gigachat-ca.example.yaml` в `compose.gigachat-ca.yaml`, затем задайте
 в `.env`:
@@ -91,6 +96,7 @@ docker compose -f compose.yaml -f compose.gigachat-ca.yaml up --build
 
 Без дополнительного сертификата оставьте `GIGACHAT_CA_BUNDLE` и
 `GIGACHAT_CA_HOST_PATH` пустыми и используйте обычный `docker compose up --build`.
+При `GIGACHAT_VERIFY_SSL=0` дополнительный сертификат также не требуется.
 
 При `PORT=8000` интерфейс и проверки доступны по адресам `http://localhost:8000/`,
 `http://localhost:8000/service/health` (работает веб-сервис) и

@@ -59,6 +59,18 @@ class GigaChatSuggestionTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         gigachat._token_cache.clear()
 
+    async def test_provider_error_details_reject_unrecognized_private_values(
+        self,
+    ) -> None:
+        response = FakeResponse(
+            403,
+            {
+                "code": "private-auth-key",
+                "message": "Unauthorized: private resident description",
+            },
+        )
+        self.assertEqual(await gigachat._safe_error_details(response), (None, None))
+
     async def test_http_suggestion_preserves_gigachat_source_and_summary(self) -> None:
         with patch(
             "src.views.issues.suggest.suggest_issue", new_callable=AsyncMock
@@ -175,12 +187,14 @@ class GigaChatSuggestionTests(unittest.IsolatedAsyncioTestCase):
         auth = client.calls[0][1]
         self.assertEqual(auth["data"], {"scope": "GIGACHAT_API_PERS"})
         self.assertEqual(auth["headers"]["Authorization"], "Basic private-auth-key")
+        self.assertEqual(auth["headers"]["User-Agent"], "hackathon-max/1.0")
         self.assertEqual(UUID(auth["headers"]["RqUID"]).version, 4)
         self.assertIs(auth["ssl"], True)
         request = client.calls[1][1]
         self.assertEqual(
             request["headers"]["Authorization"], "Bearer private-access-token"
         )
+        self.assertEqual(request["headers"]["User-Agent"], "hackathon-max/1.0")
         self.assertIs(request["ssl"], True)
         self.assertEqual(request["json"]["model"], "GigaChat-2-Pro")
         self.assertEqual(request["json"]["response_format"]["type"], "json_schema")
@@ -286,6 +300,116 @@ class GigaChatSuggestionTests(unittest.IsolatedAsyncioTestCase):
         failure = logger.warning.call_args.kwargs["extra"]
         self.assertEqual(failure["error_code"], "auth_http_status")
         self.assertEqual(failure["status_code"], 403)
+        self.assertIsNone(failure["provider_error_code"])
+        self.assertIsNone(failure["provider_error_kind"])
+        self.assertNotIn("private-auth-key", json.dumps(failure))
+        self.assertNotIn("private resident description", json.dumps(failure))
+
+    async def test_completion_403_classifies_known_error_without_logging_body(
+        self,
+    ) -> None:
+        client = FakeClient(
+            [
+                FakeResponse(
+                    200,
+                    {
+                        "access_token": "private-access-token",
+                        "expires_at": time.time() + 1800,
+                    },
+                ),
+                FakeResponse(
+                    403,
+                    {
+                        "status": 403,
+                        "message": "Unauthorized",
+                        "request_body": "private resident description",
+                        "token": "private-access-token",
+                    },
+                ),
+            ]
+        )
+        with (
+            patch(
+                "src.domain.issues.suggest._load_candidates", new_callable=AsyncMock
+            ) as load,
+            patch(
+                "src.domain.issues.gigachat.aiohttp.ClientSession", return_value=client
+            ),
+            patch("src.domain.issues.gigachat._logger") as logger,
+            patch.dict(
+                "os.environ",
+                {
+                    "ISSUE_AI_PROVIDER": "gigachat",
+                    "GIGACHAT_AUTH_KEY": "private-auth-key",
+                    "GIGACHAT_SEND_REAL_DATA": "1",
+                },
+                clear=True,
+            ),
+        ):
+            load.return_value = ([], None)
+            result = await suggest_issue(
+                SimpleNamespace(),
+                SimpleNamespace(id=UUID(int=1)),
+                house_id=UUID(int=2),
+                description="private resident description",
+            )
+        self.assertEqual(result.source, "local")
+        self.assertEqual(len(client.calls), 2)
+        self.assertEqual(
+            client.calls[1][1]["headers"]["User-Agent"], "hackathon-max/1.0"
+        )
+        failure = logger.warning.call_args.kwargs["extra"]
+        self.assertEqual(failure["error_code"], "http_status")
+        self.assertEqual(failure["status_code"], 403)
+        self.assertEqual(failure["provider_error_kind"], "unauthorized")
+        self.assertIsNone(failure["provider_error_code"])
+        self.assertNotIn("private resident description", json.dumps(failure))
+        self.assertNotIn("private-access-token", json.dumps(failure))
+
+    async def test_oauth_error_logs_only_allowlisted_details(self) -> None:
+        client = FakeClient(
+            [
+                FakeResponse(
+                    400,
+                    {
+                        "code": 7,
+                        "message": "scope from db not fully includes consumed scope",
+                        "echo": "private-auth-key",
+                    },
+                )
+            ]
+        )
+        with (
+            patch(
+                "src.domain.issues.suggest._load_candidates", new_callable=AsyncMock
+            ) as load,
+            patch(
+                "src.domain.issues.gigachat.aiohttp.ClientSession", return_value=client
+            ),
+            patch("src.domain.issues.gigachat._logger") as logger,
+            patch.dict(
+                "os.environ",
+                {
+                    "ISSUE_AI_PROVIDER": "gigachat",
+                    "GIGACHAT_AUTH_KEY": "private-auth-key",
+                    "GIGACHAT_SEND_REAL_DATA": "1",
+                },
+                clear=True,
+            ),
+        ):
+            load.return_value = ([], None)
+            result = await suggest_issue(
+                SimpleNamespace(),
+                SimpleNamespace(id=UUID(int=1)),
+                house_id=UUID(int=2),
+                description="private resident description",
+            )
+        self.assertEqual(result.source, "local")
+        failure = logger.warning.call_args.kwargs["extra"]
+        self.assertEqual(failure["error_code"], "auth_http_status")
+        self.assertEqual(failure["status_code"], 400)
+        self.assertEqual(failure["provider_error_code"], 7)
+        self.assertEqual(failure["provider_error_kind"], "scope_mismatch")
         self.assertNotIn("private-auth-key", json.dumps(failure))
         self.assertNotIn("private resident description", json.dumps(failure))
 
@@ -461,6 +585,51 @@ class GigaChatSuggestionTests(unittest.IsolatedAsyncioTestCase):
         self.assertIs(client.calls[0][1]["ssl"], ca_context)
         self.assertIs(client.calls[1][1]["ssl"], ca_context)
         self.assertEqual(client.calls[1][1]["json"]["model"], "GigaChat-2-Max")
+
+    async def test_explicit_ssl_bypass_applies_only_to_gigachat_requests(self) -> None:
+        client = FakeClient(
+            [
+                FakeResponse(
+                    200,
+                    {
+                        "access_token": "private-access-token",
+                        "expires_at": time.time() + 1800,
+                    },
+                ),
+                valid_completion(),
+            ]
+        )
+        with (
+            patch(
+                "src.domain.issues.suggest._load_candidates", new_callable=AsyncMock
+            ) as load,
+            patch(
+                "src.domain.issues.gigachat.aiohttp.ClientSession", return_value=client
+            ),
+            patch("src.domain.issues.gigachat.ssl.create_default_context") as ca,
+            patch.dict(
+                "os.environ",
+                {
+                    "ISSUE_AI_PROVIDER": "gigachat",
+                    "GIGACHAT_AUTH_KEY": "private-auth-key",
+                    "GIGACHAT_SEND_REAL_DATA": "1",
+                    "GIGACHAT_CA_BUNDLE": "/not/needed/when/disabled.pem",
+                    "GIGACHAT_VERIFY_SSL": "0",
+                },
+                clear=True,
+            ),
+        ):
+            load.return_value = ([], None)
+            result = await suggest_issue(
+                SimpleNamespace(),
+                SimpleNamespace(id=UUID(int=1)),
+                house_id=UUID(int=2),
+                description="Лифт сломан",
+            )
+        self.assertEqual(result.source, "gigachat")
+        self.assertIs(client.calls[0][1]["ssl"], False)
+        self.assertIs(client.calls[1][1]["ssl"], False)
+        ca.assert_not_called()
 
     async def test_completion_401_refreshes_token_once_within_same_request(
         self,

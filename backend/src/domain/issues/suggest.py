@@ -410,6 +410,7 @@ async def suggest_issue(
                 scope=os.getenv("GIGACHAT_SCOPE", "PERS"),
                 model=os.getenv("GIGACHAT_MODEL", DEFAULT_GIGACHAT_MODEL),
                 ca_bundle=os.getenv("GIGACHAT_CA_BUNDLE", ""),
+                verify_ssl=os.getenv("GIGACHAT_VERIFY_SSL", "1"),
                 messages=messages,
                 response_schema=response_schema,
                 validate=lambda payload: _validate_provider_payload(
