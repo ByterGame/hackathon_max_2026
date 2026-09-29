@@ -1,10 +1,11 @@
 import { useState } from "react";
 
 import { IssueCard } from "../features/issues/ui/IssueCard";
-import { type CompanyRegistrationRequest, type House, type HouseAdditionRequest, type Issue, type ResidentGrant, type ResidentRequest } from "../features/issues/types";
+import { formatApartmentLocation, formatHouseCounts, type CompanyRegistrationRequest, type House, type HouseAdditionRequest, type Issue, type ResidentGrant, type ResidentRequest } from "../features/issues/types";
 import { Icon } from "../shared/common_ui/Icon";
 import { ScreenHeader } from "../shared/common_ui/ScreenHeader";
 import { ApplicantRequestsList, type ApplicantCase } from "./MyRequests";
+import "./resident-home.css";
 
 interface ResidentHomeProps {
   houses: House[];
@@ -40,11 +41,20 @@ export function ResidentHome({ houses, issues, grants, requests, companyRequests
 
   return (
     <div className="page">
-      <ScreenHeader title="Мой дом" subtitle="Обращения и ответы УК" icon="home" action={onChangeRole ? { label: "Сменить демо-роль", onClick: onChangeRole, icon: "user" } : undefined} />
-      <div className="house-card panel">
-        <span className="small-icon"><Icon name="building" size={24} /></span>
-        <span>{myHouseIds.length > 1 ? <select className="house-picker" aria-label="Выберите дом" value={house?.id} onChange={(event) => onSelectHouse(event.target.value)}>{myHouseIds.map((id) => <option key={id} value={id}>{houses.find((houseItem) => houseItem.id === id)?.address}</option>)}</select> : <strong>{house?.address ?? "Дом не выбран"}</strong>}<small><Icon name="check" size={15} /> {myGrants.filter((item) => item.houseId === house?.id).length > 1 ? `Доступ: ${myGrants.filter((item) => item.houseId === house?.id).length} квартиры` : `Доступ: подъезд №${grant?.entrance}, кв. ${grant?.apartment}`}</small></span>
-      </div>
+      <ScreenHeader title="Мои дома" subtitle="Обращения и ответы УК" icon="home" action={onChangeRole ? { label: "Сменить демо-роль", onClick: onChangeRole, icon: "user" } : undefined} />
+      <section className="my-houses" aria-labelledby="my-houses-title">
+        <div className="section-heading"><h2 id="my-houses-title">Мои дома</h2><span className="count-badge">{myHouseIds.length}</span></div>
+        <div className="my-houses__list">{myHouseIds.map((id) => {
+          const item = houses.find((candidate) => candidate.id === id);
+          const locations = myGrants.filter((entry) => entry.houseId === id).map((entry) => formatApartmentLocation(entry.apartment, entry.entrance));
+          const selected = house?.id === id;
+          return <button key={id} type="button" className={`panel my-house-card${selected ? " my-house-card--selected" : ""}`} aria-pressed={selected} onClick={() => onSelectHouse(id)}>
+            <span className="small-icon"><Icon name="building" size={24} /></span>
+            <span className="my-house-card__text"><strong>{item?.address ?? "Дом без адреса"}</strong><small>Доступ: {locations.join(", ")}</small>{item && <small>{formatHouseCounts(item.entranceCount, item.apartmentCount)}</small>}</span>
+            <span className="my-house-card__state">{selected ? "Выбран" : "Выбрать"}</span>
+          </button>;
+        })}</div>
+      </section>
       <button type="button" className="text-link" onClick={onAccess}>Заявка на доступ к другому дому <Icon name="chevron" size={17} /></button>
       <button type="button" className="text-link" onClick={onRegister}>Представляете УК? Подключить компанию <Icon name="chevron" size={17} /></button>
 

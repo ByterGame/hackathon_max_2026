@@ -36,7 +36,13 @@ class User(Base):
     max_user_id: Mapped[str | None] = mapped_column(Text, unique=True)
     phone_number: Mapped[str | None] = mapped_column(Text, unique=True)
     phone_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    max_display_name: Mapped[str | None] = mapped_column(Text)
+    max_username: Mapped[str | None] = mapped_column(Text)
     full_name: Mapped[str | None] = mapped_column(Text)
+    full_name_is_manual: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    full_name_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     kind: Mapped[str] = mapped_column(
         Text, nullable=False, server_default=text("'unassigned'")
     )

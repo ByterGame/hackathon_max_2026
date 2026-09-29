@@ -24,7 +24,7 @@ schemas:
       id: {type: string, format: uuid}
       house_id: {type: string, format: uuid}
       address_display: {type: string}
-      entrance_number: {type: integer}
+      entrance_number: {type: [integer, 'null']}
       apartment_number: {type: integer}
       phone_number: {type: string}
       status: {type: string}

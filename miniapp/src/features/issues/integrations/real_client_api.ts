@@ -23,6 +23,7 @@ interface WireCard {
   author_user_id: string;
   category_id: string;
   title: string;
+  summary_description: string;
   version: number;
   status: IssueStatus;
   close_result: "solved" | "invalid" | null;
@@ -53,7 +54,7 @@ interface WireRequest {
   house_id?: string;
   address_display?: string | null;
   submitted_full_name?: string;
-  submitted_entrance_number?: number;
+  submitted_entrance_number?: number | null;
   submitted_apartment_number?: number;
   phone_number?: string;
   proposed_company_name?: string | null;
@@ -61,13 +62,16 @@ interface WireRequest {
   registration_request_id?: string | null;
   company_id?: string | null;
   entered_address?: string;
+  entrance_count?: number | null;
+  apartment_count?: number | null;
+  resolved_house_id?: string | null;
 }
 
 interface WireGrant {
   id: string;
   house_id: string;
   address_display: string;
-  entrance_number: number;
+  entrance_number: number | null;
   apartment_number: number;
   valid_to: string | null;
   status: "active" | "expired" | "revoked";
@@ -77,7 +81,7 @@ interface WireOffer {
   id: string;
   house_id: string;
   address_display: string;
-  entrance_number: number;
+  entrance_number: number | null;
   apartment_number: number;
   status: ResidentOffer["status"];
   created_at: string;
@@ -93,7 +97,7 @@ interface WireResident {
   phone_number: string | null;
   house_id: string;
   address_display: string;
-  entrance_number: number;
+  entrance_number: number | null;
   apartment_number: number;
   status: "active" | "expired" | "revoked";
   valid_to: string | null;
@@ -144,7 +148,7 @@ function toIssue(detail: WireDetail, user: CurrentUser): Issue {
   const company = housesCache.find((item) => item.id === card.house_id)?.company ?? "УК дома";
   const messages: IssueMessage[] = detail.messages.map((item) => ({
     id: item.id,
-    author: item.kind === "official_uk" ? company : item.author_user_id === user.id ? "Вы" : "Житель дома",
+    author: item.kind === "official_uk" ? company : item.author_user_id === user.id ? "Вы" : "Жилец дома",
     kind: item.kind,
     body: item.body,
     createdAt: item.created_at,
@@ -162,10 +166,11 @@ function toIssue(detail: WireDetail, user: CurrentUser): Issue {
     title: card.title,
     category: categoriesCache.find((item) => item.id === card.category_id)?.name ?? "Другое",
     description: detail.reports[0]?.raw_description ?? "",
+    summaryDescription: card.summary_description ?? detail.reports[0]?.raw_description ?? "",
     scope: {
       allHouse: card.scope_all_house,
       entrances: detail.targets.flatMap((item) => item.entrance_number == null ? [] : [item.entrance_number]),
-      apartments: detail.targets.flatMap((item) => item.apartment_entrance_number == null || item.apartment_number == null ? [] : [{ entrance: item.apartment_entrance_number, number: item.apartment_number }]),
+      apartments: detail.targets.flatMap((item) => item.apartment_number == null ? [] : [{ number: item.apartment_number, ...(item.apartment_entrance_number == null ? {} : { entrance: item.apartment_entrance_number }) }]),
     },
     status: card.status,
     closeResult: card.close_result ?? undefined,
@@ -203,7 +208,7 @@ function residentRequest(item: WireRequest): ResidentRequest {
     houseId: item.house_id ?? "",
     address: item.address_display ?? undefined,
     fullName: item.submitted_full_name ?? "",
-    entrance: item.submitted_entrance_number ?? 0,
+    entrance: item.submitted_entrance_number ?? undefined,
     apartment: item.submitted_apartment_number ?? 0,
     status: item.status,
     outcome: item.outcome === "granted" || item.outcome === "denied" ? item.outcome : undefined,
@@ -232,6 +237,9 @@ function houseRequest(item: WireRequest): HouseAdditionRequest {
     registrationRequestId: item.registration_request_id ?? undefined,
     companyId: item.company_id ?? undefined,
     address: item.entered_address ?? "",
+    entranceCount: item.entrance_count ?? undefined,
+    apartmentCount: item.apartment_count ?? undefined,
+    resolvedHouseId: item.resolved_house_id ?? undefined,
     explanation: item.free_text ?? undefined,
     status: item.status,
     outcome: item.outcome === "approved" || item.outcome === "rejected" ? item.outcome : undefined,
@@ -264,11 +272,11 @@ export const realIssuesClient: IssuesClient = {
       ]);
       grants = grantResponse.items.map((item) => {
         rememberHouse({ id: item.house_id, address: item.address_display, company: "УК дома" }, houseMap);
-        return { id: item.id, houseId: item.house_id, fullName: user.full_name ?? "Житель", phone: user.phone_number ?? "", entrance: item.entrance_number, apartment: item.apartment_number, validUntil: item.valid_to ?? undefined, status: item.status, decidedBy: "УК дома", decidedAt: "" };
+        return { id: item.id, houseId: item.house_id, fullName: user.full_name ?? "Жилец", phone: user.phone_number ?? "", entrance: item.entrance_number ?? undefined, apartment: item.apartment_number, validUntil: item.valid_to ?? undefined, status: item.status, decidedBy: "УК дома", decidedAt: "" };
       });
       offers = offerResponse.items.map((item) => {
         rememberHouse({ id: item.house_id, address: item.address_display, company: "УК дома" }, houseMap);
-        return { id: item.id, houseId: item.house_id, phone: user.phone_number ?? "", entrance: item.entrance_number, apartment: item.apartment_number, status: item.status, createdAt: item.created_at };
+        return { id: item.id, houseId: item.house_id, phone: user.phone_number ?? "", entrance: item.entrance_number ?? undefined, apartment: item.apartment_number, status: item.status, createdAt: item.created_at };
       });
       residentRequests = residentResponse.items.map(residentRequest);
       for (const item of residentResponse.items) {
@@ -281,7 +289,7 @@ export const realIssuesClient: IssuesClient = {
       const responses = await Promise.all(memberships.map(async (membership) => {
         const company = membership.company_id;
         const [houseResponse, staffResponse, residentResponse, offerResponse] = await Promise.all([
-          requestJson<{ items: { id: string; address_display: string; entrance_count: number | null }[] }>(query("/access/list_company_houses", { company_id: company })),
+          requestJson<{ items: { id: string; address_display: string; entrance_count: number | null; apartment_count: number | null }[] }>(query("/access/list_company_houses", { company_id: company })),
           requestJson<{ items: WireStaff[] }>(query("/access/list_staff", { company_id: company })),
           requestJson<{ items: WireResident[] }>(query("/access/list_residents", { company_id: company })),
           requestJson<{ items: WireCompanyOffer[] }>(query("/access/list_company_offers", { company_id: company })),
@@ -289,10 +297,10 @@ export const realIssuesClient: IssuesClient = {
         return { membership, houseResponse, staffResponse, residentResponse, offerResponse };
       }));
       for (const response of responses) {
-        for (const item of response.houseResponse.items) rememberHouse({ id: item.id, address: item.address_display, company: response.membership.company_name, companyId: response.membership.company_id, entranceCount: item.entrance_count ?? undefined }, houseMap);
+        for (const item of response.houseResponse.items) rememberHouse({ id: item.id, address: item.address_display, company: response.membership.company_name, companyId: response.membership.company_id, entranceCount: item.entrance_count ?? undefined, apartmentCount: item.apartment_count ?? undefined }, houseMap);
         staff.push(...response.staffResponse.items.filter((item) => !item.revoked_at).map((item) => ({ id: item.id, companyId: response.membership.company_id, phone: item.phone_number, rights: { manageStaff: item.can_manage_staff, manageResidents: item.can_manage_residents, manageIssues: item.can_manage_issues }, bound: Boolean(item.user_id), createdAt: item.created_at })));
-        grants.push(...response.residentResponse.items.map((item) => ({ id: item.grant_id, houseId: item.house_id, fullName: item.full_name ?? "Житель", phone: item.phone_number ?? "", entrance: item.entrance_number, apartment: item.apartment_number, validUntil: item.valid_to ?? undefined, status: item.status, decidedBy: item.decided_by, decidedAt: item.decided_at ?? "" })));
-        offers.push(...response.offerResponse.items.map((item) => ({ id: item.id, houseId: item.house_id, phone: item.phone_number, entrance: item.entrance_number, apartment: item.apartment_number, status: item.status, createdAt: item.created_at })));
+        grants.push(...response.residentResponse.items.map((item) => ({ id: item.grant_id, houseId: item.house_id, fullName: item.full_name ?? "Жилец", phone: item.phone_number ?? "", entrance: item.entrance_number ?? undefined, apartment: item.apartment_number, validUntil: item.valid_to ?? undefined, status: item.status, decidedBy: item.decided_by, decidedAt: item.decided_at ?? "" })));
+        offers.push(...response.offerResponse.items.map((item) => ({ id: item.id, houseId: item.house_id, phone: item.phone_number, entrance: item.entrance_number ?? undefined, apartment: item.apartment_number, status: item.status, createdAt: item.created_at })));
       }
       const [residentResponse, houseResponse] = await Promise.all([
         requestJson<{ items: WireRequest[] }>(query("/access/list_requests", { request_kind: "resident" })),
@@ -313,7 +321,15 @@ export const realIssuesClient: IssuesClient = {
 
   async suggestIssue(input): Promise<IssueSuggestion> {
     const category = categoriesCache.find((item) => item.name === input.category);
-    const response = await post<{ suggested_title: string; similar_card_ids: string[]; candidates: { id: string; title: string }[]; source: "groq" | "local" }>("/issues/suggest", {
+    const response = await post<{
+      suggested_title: string;
+      summary_description: string | null;
+      similar_card_ids: string[];
+      candidates: { id: string; title: string }[];
+      source: "gigachat" | "local";
+      description_check: "ok" | "warning" | "not_checked";
+      description_warning: string | null;
+    }>("/issues/suggest", {
       house_id: input.houseId,
       description: input.description.trim(),
       category_id: category?.id ?? null,
@@ -322,7 +338,14 @@ export const realIssuesClient: IssuesClient = {
     const similarIssues = await Promise.all(response.similar_card_ids.filter((id) => visibleIds.has(id)).map((id) =>
       lastSnapshot?.issues.find((item) => item.id === id) ?? loadIssue(id),
     ));
-    return { suggestedTitle: response.suggested_title, similarIssues, source: response.source };
+    return {
+      suggestedTitle: response.suggested_title,
+      summaryDescription: response.summary_description,
+      similarIssues,
+      source: response.source,
+      descriptionCheck: response.description_check,
+      descriptionWarning: response.description_warning,
+    };
   },
 
   async createIssue(input, idempotencyKey) {
@@ -333,9 +356,10 @@ export const realIssuesClient: IssuesClient = {
       category_id: category.id,
       title: input.title.trim(),
       description: input.description.trim(),
+      summary_description: input.summaryDescription?.trim() || input.description.trim(),
       scope_all_house: input.scope.allHouse,
       target_entrances: input.scope.allHouse ? [] : input.scope.entrances,
-      target_apartments: input.scope.allHouse ? [] : input.scope.apartments.map((item) => ({ entrance_number: item.entrance, apartment_number: item.number })),
+      target_apartments: input.scope.allHouse ? [] : input.scope.apartments.map((item) => ({ apartment_number: item.number })),
     }, idempotencyKey);
     return loadIssue(response.card.id);
   },
@@ -373,9 +397,10 @@ export const realIssuesClient: IssuesClient = {
       expected_version: expectedVersion,
       category_id: category.id,
       title: input.title.trim(),
+      summary_description: input.summaryDescription.trim(),
       scope_all_house: input.scope.allHouse,
       target_entrances: input.scope.allHouse ? [] : input.scope.entrances,
-      target_apartments: input.scope.allHouse ? [] : input.scope.apartments.map((item) => ({ entrance_number: item.entrance, apartment_number: item.number })),
+      target_apartments: input.scope.allHouse ? [] : input.scope.apartments.map((item) => ({ apartment_number: item.number })),
     });
     return loadIssue(id);
   },
@@ -397,23 +422,23 @@ export const realIssuesClient: IssuesClient = {
   },
 
   async submitResidentRequest(input, idempotencyKey) {
-    const response = await post<{ id: string; status: ResidentRequest["status"] }>("/access/create_resident_request", { house_id: input.houseId, full_name: input.fullName.trim(), entrance_number: input.entrance, apartment_number: input.apartment }, idempotencyKey);
+    const response = await post<{ id: string; status: ResidentRequest["status"] }>("/access/create_resident_request", { house_id: input.houseId, full_name: input.fullName.trim(), apartment_number: input.apartment }, idempotencyKey);
     return { ...input, id: response.id, status: response.status, createdAt: new Date().toISOString() };
   },
 
   async decideResidentRequest(id, outcome, note) {
     await post("/access/decide_resident_request", { request_id: id, outcome, decision_note: note.trim() });
-    return { id, houseId: "", fullName: "", entrance: 0, apartment: 0, status: "closed", outcome, decisionNote: note, createdAt: "" };
+    return { id, houseId: "", fullName: "", apartment: 0, status: "closed", outcome, decisionNote: note, createdAt: "" };
   },
 
   async createResidentOffer(input) {
-    const response = await post<{ id: string; status: ResidentOffer["status"] }>("/access/create_resident_offer", { house_id: input.houseId, entrance_number: input.entrance, apartment_number: input.apartment, phone_number: input.phone });
+    const response = await post<{ id: string; status: ResidentOffer["status"] }>("/access/create_resident_offer", { house_id: input.houseId, apartment_number: input.apartment, phone_number: input.phone });
     return { ...input, id: response.id, status: response.status, createdAt: new Date().toISOString() };
   },
 
   async answerResidentOffer(id, accept) {
     const response = await post<{ status: ResidentOffer["status"] }>("/access/respond_resident_offer", { offer_id: id, accept });
-    return { id, houseId: "", phone: "", entrance: 0, apartment: 0, status: response.status, createdAt: "" };
+    return { id, houseId: "", phone: "", apartment: 0, status: response.status, createdAt: "" };
   },
 
   async assignStaff(companyId, phone, rights) {
@@ -426,15 +451,16 @@ export const realIssuesClient: IssuesClient = {
     return { ...input, id: response.id, status: response.status, createdAt: new Date().toISOString() };
   },
 
-  async createHouseRequest(address, registrationRequestId, explanation, companyId) {
+  async createHouseRequest(address, entranceCount, apartmentCount, registrationRequestId, explanation, companyId) {
     if (!registrationRequestId && !companyId) throw new Error("Выберите управляющую компанию");
-    const response = await post<{ id: string; status: string }>("/access/create_house_request", { registration_request_id: registrationRequestId ?? null, company_id: registrationRequestId ? null : companyId, entered_address: address.trim(), free_text: explanation?.trim() || null });
-    return { id: response.id, address, registrationRequestId, companyId, explanation, status: response.status, createdAt: new Date().toISOString() };
+    if (!Number.isInteger(entranceCount) || entranceCount < 1 || !Number.isInteger(apartmentCount) || apartmentCount < 1) throw new Error("Укажите положительное количество подъездов и квартир");
+    const response = await post<{ id: string; status: string }>("/access/create_house_request", { registration_request_id: registrationRequestId ?? null, company_id: registrationRequestId ? null : companyId, entered_address: address.trim(), entrance_count: entranceCount, apartment_count: apartmentCount, free_text: explanation?.trim() || null });
+    return { id: response.id, address, entranceCount, apartmentCount, registrationRequestId, companyId, explanation, status: response.status, createdAt: new Date().toISOString() };
   },
 
   async searchHouses(text) {
     if (text.trim().length < 2) return [];
-    const response = await requestJson<{ items: { id: string; address_display: string; entrance_count: number | null }[] }>(query("/access/search_houses", { text: text.trim() }));
-    return response.items.map((item) => ({ id: item.id, address: item.address_display, company: "УК дома", entranceCount: item.entrance_count ?? undefined }));
+    const response = await requestJson<{ items: { id: string; address_display: string; entrance_count: number | null; apartment_count: number | null }[] }>(query("/access/search_houses", { text: text.trim() }));
+    return response.items.map((item) => ({ id: item.id, address: item.address_display, company: "УК дома", entranceCount: item.entrance_count ?? undefined, apartmentCount: item.apartment_count ?? undefined }));
   },
 };

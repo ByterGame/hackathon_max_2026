@@ -1,17 +1,15 @@
-import io
 import json
-import logging
 import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from uuid import UUID
 
-from src.core.logging import JsonLogFormatter
 from src.domain.issues.service import IssueError
 from src.domain.issues.suggest import (
     Candidate,
-    _groq_suggestion,
+    _attach_candidate_descriptions,
     _load_candidates,
+    _provider_prompt,
     _select_visible_candidates,
     _validate_provider_payload,
     local_similar_ids,
@@ -31,43 +29,6 @@ def card(number: int, **overrides: object) -> SimpleNamespace:
     )
     values.update(overrides)
     return SimpleNamespace(**values)
-
-
-def fake_provider_session(status: int, content: str | None = None):
-    class FakeResponse:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *_args):
-            return None
-
-        async def json(self):
-            if content is None:
-                raise AssertionError("response body should not be read")
-            return {"choices": [{"message": {"content": content}}]}
-
-    class FakeSession:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *_args):
-            return None
-
-        def post(self, *_args, **_kwargs):
-            response = FakeResponse()
-            response.status = status
-            return response
-
-    return FakeSession()
-
-
-def captured_suggestion_logs() -> tuple[logging.Logger, io.StringIO]:
-    output = io.StringIO()
-    handler = logging.StreamHandler(output)
-    handler.setFormatter(JsonLogFormatter())
-    logger = logging.Logger("test.issue_suggestion", level=logging.INFO)
-    logger.addHandler(handler)
-    return logger, output
 
 
 class IssueSuggestionRulesTests(unittest.TestCase):
@@ -93,7 +54,9 @@ class IssueSuggestionRulesTests(unittest.TestCase):
         ]
         targets = [
             SimpleNamespace(card_id=UUID(int=2), apartment_id=None, entrance_number=3),
-            SimpleNamespace(card_id=UUID(int=3), apartment_id=my_apartment, entrance_number=None),
+            SimpleNamespace(
+                card_id=UUID(int=3), apartment_id=my_apartment, entrance_number=None
+            ),
         ]
         result = _select_visible_candidates(
             cards=cards,
@@ -104,26 +67,159 @@ class IssueSuggestionRulesTests(unittest.TestCase):
             description="Лифт сломан",
             category_id=None,
         )
-        self.assertEqual({item.id for item in result}, {UUID(int=1), UUID(int=3), UUID(int=6)})
+        self.assertEqual(
+            {item.id for item in result}, {UUID(int=1), UUID(int=3), UUID(int=6)}
+        )
+
+    def test_recent_semantic_candidate_survives_lexical_ranking(self) -> None:
+        cards = [
+            card(number, scope_all_house=True, title="Вода в техническом помещении")
+            for number in range(1, 41)
+        ] + [
+            card(number, scope_all_house=True, title="Сломался лифт")
+            for number in range(41, 61)
+        ]
+        result = _select_visible_candidates(
+            cards=cards,
+            targets=[],
+            actor_id=UUID(int=99),
+            apartment_ids=set(),
+            entrance_numbers=set(),
+            description="Сломался лифт",
+            category_id=None,
+        )
+        self.assertEqual(len(result), 40)
+        self.assertIn(UUID(int=15), {candidate.id for candidate in result})
+        self.assertIn(UUID(int=50), {candidate.id for candidate in result})
+        self.assertNotIn(UUID(int=30), {candidate.id for candidate in result})
 
     def test_provider_ids_must_all_be_allowed_and_unique(self) -> None:
         allowed = {UUID(int=1), UUID(int=2)}
-        valid = {"title": "Сломан лифт", "similar_card_ids": [str(UUID(int=1))]}
-        self.assertEqual(_validate_provider_payload(valid, allowed), ("Сломан лифт", [UUID(int=1)]))
+        valid = {
+            "title": "Сломан лифт",
+            "similar_card_ids": [str(UUID(int=1))],
+            "description_check": "ok",
+            "description_warning": None,
+            "summary_description": "Лифт в доме не работает.",
+        }
+        self.assertEqual(
+            _validate_provider_payload(valid, allowed),
+            ("Сломан лифт", [UUID(int=1)], "ok", None, "Лифт в доме не работает."),
+        )
         self.assertIsNone(
             _validate_provider_payload(
-                {"title": "Сломан лифт", "similar_card_ids": [str(UUID(int=3))]}, allowed
+                {"title": "Сломан лифт", "similar_card_ids": [str(UUID(int=3))]},
+                allowed,
             )
         )
         self.assertIsNone(
             _validate_provider_payload(
-                {"title": "Сломан лифт", "similar_card_ids": [str(UUID(int=1))] * 2}, allowed
+                {"title": "Сломан лифт", "similar_card_ids": [str(UUID(int=1))] * 2},
+                allowed,
             )
         )
-        self.assertIsNone(_validate_provider_payload(valid | {"action": "merge"}, allowed))
+        self.assertIsNone(
+            _validate_provider_payload(valid | {"action": "merge"}, allowed)
+        )
+
+    def test_provider_warning_requires_a_short_explanation(self) -> None:
+        valid = {
+            "title": "Нужны подробности",
+            "similar_card_ids": [],
+            "description_check": "warning",
+            "description_warning": "Что именно не работает и где?",
+            "summary_description": "Требуется уточнить проблему с лифтом.",
+        }
+        self.assertEqual(
+            _validate_provider_payload(valid, set()),
+            (
+                "Нужны подробности",
+                [],
+                "warning",
+                "Что именно не работает и где?",
+                "Требуется уточнить проблему с лифтом.",
+            ),
+        )
+        self.assertIsNone(
+            _validate_provider_payload(valid | {"description_warning": None}, set())
+        )
+        self.assertIsNone(
+            _validate_provider_payload(valid | {"description_warning": " "}, set())
+        )
+        self.assertIsNone(
+            _validate_provider_payload(
+                valid | {"description_warning": "x" * 301}, set()
+            )
+        )
+        self.assertIsNone(
+            _validate_provider_payload(valid | {"description_check": "ok"}, set())
+        )
+        self.assertIsNone(
+            _validate_provider_payload(valid | {"description_check": []}, set())
+        )
+        self.assertIsNone(
+            _validate_provider_payload(valid | {"summary_description": " "}, set())
+        )
+        self.assertIsNone(
+            _validate_provider_payload(
+                valid | {"summary_description": "x" * 501}, set()
+            )
+        )
+        self.assertIsNone(
+            _validate_provider_payload(valid | {"summary_description": None}, set())
+        )
+
+    def test_provider_prompt_limits_candidate_details_and_requires_summary(
+        self,
+    ) -> None:
+        candidate_id = UUID(int=7)
+        messages, schema = _provider_prompt(
+            category_name="Лифты",
+            description="Лифт не реагирует на вызов",
+            candidates=[Candidate(candidate_id, "Н" * 120, "О" * 200)],
+        )
+        payload = json.loads(messages[1]["content"])
+        self.assertEqual(payload["category"], "Лифты")
+        self.assertEqual(
+            payload["candidates"],
+            [
+                {
+                    "id": str(candidate_id),
+                    "title": "Н" * 100,
+                    "description": "О" * 160,
+                }
+            ],
+        )
+        self.assertIn("summary_description", schema["required"])
+        self.assertEqual(
+            schema["properties"]["description_warning"]["type"], ["string", "null"]
+        )
 
 
 class IssueSuggestionAsyncTests(unittest.IsolatedAsyncioTestCase):
+    async def test_candidate_descriptions_are_bounded_and_queried_only_for_visible_ids(
+        self,
+    ) -> None:
+        visible_id = UUID(int=2)
+        session = SimpleNamespace(
+            execute=AsyncMock(
+                return_value=SimpleNamespace(
+                    all=lambda: [
+                        SimpleNamespace(
+                            card_id=visible_id, raw_description="  вода   " + "в" * 250
+                        )
+                    ]
+                )
+            )
+        )
+        result = await _attach_candidate_descriptions(
+            session, [Candidate(visible_id, "Потоп в подвале")]
+        )
+        self.assertEqual(result[0].description, ("вода " + "в" * 250)[:160])
+        statement = session.execute.call_args.args[0]
+        params = statement.compile().params
+        self.assertIn([visible_id], params.values())
+
     async def test_staff_without_resident_grant_cannot_suggest(self) -> None:
         session = SimpleNamespace(
             get=AsyncMock(return_value=SimpleNamespace(archived_at=None)),
@@ -131,247 +227,287 @@ class IssueSuggestionAsyncTests(unittest.IsolatedAsyncioTestCase):
         )
         with self.assertRaises(IssueError) as error:
             await _load_candidates(
-                session, SimpleNamespace(id=UUID(int=1)), UUID(int=2), "Лифт сломан", None
+                session,
+                SimpleNamespace(id=UUID(int=1)),
+                UUID(int=2),
+                "Лифт сломан",
+                None,
             )
         self.assertEqual(error.exception.status_code, 403)
 
-    async def test_outbound_is_disabled_without_explicit_opt_in(self) -> None:
+    async def test_missing_provider_is_configuration_error_before_database_access(
+        self,
+    ) -> None:
+        with (
+            patch(
+                "src.domain.issues.suggest._load_candidates", new_callable=AsyncMock
+            ) as load,
+            patch(
+                "src.domain.issues.suggest.gigachat_suggestion", new_callable=AsyncMock
+            ) as giga,
+            patch.dict("os.environ", {}, clear=True),
+        ):
+            with self.assertRaises(IssueError) as caught:
+                await suggest_issue(
+                    SimpleNamespace(),
+                    SimpleNamespace(id=UUID(int=1)),
+                    house_id=UUID(int=3),
+                    description="Не работает лифт в доме",
+                )
+            load.assert_not_awaited()
+            giga.assert_not_awaited()
+        self.assertEqual(caught.exception.status_code, 503)
+        self.assertEqual(caught.exception.code, "ai_provider_not_configured")
+
+    async def test_explicit_local_ignores_configured_external_provider(self) -> None:
         candidates = [Candidate(UUID(int=2), "Не работает лифт")]
         with (
-            patch("src.domain.issues.suggest._load_candidates", new_callable=AsyncMock) as load,
-            patch("src.domain.issues.suggest._groq_suggestion", new_callable=AsyncMock) as groq,
+            patch(
+                "src.domain.issues.suggest._load_candidates", new_callable=AsyncMock
+            ) as load,
+            patch(
+                "src.domain.issues.suggest.gigachat_suggestion", new_callable=AsyncMock
+            ) as giga,
             patch("src.domain.issues.suggest.logger") as logger,
-            patch.dict("os.environ", {"GROQ_API_KEY": "test-key"}, clear=True),
+            patch.dict(
+                "os.environ",
+                {
+                    "ISSUE_AI_PROVIDER": "local",
+                    "GIGACHAT_AUTH_KEY": "private-auth-key",
+                    "GIGACHAT_SEND_REAL_DATA": "1",
+                },
+                clear=True,
+            ),
         ):
             load.return_value = (candidates, None)
             result = await suggest_issue(
-                SimpleNamespace(), SimpleNamespace(id=UUID(int=1)),
-                house_id=UUID(int=3), description="Не работает лифт в доме"
+                SimpleNamespace(),
+                SimpleNamespace(id=UUID(int=1)),
+                house_id=UUID(int=3),
+                description="Не работает лифт в доме",
             )
-            groq.assert_not_awaited()
+            giga.assert_not_awaited()
         local_logs = [call.kwargs["extra"] for call in logger.info.call_args_list]
-        self.assertEqual([event["phase"] for event in local_logs], ["attempt", "complete"])
-        self.assertEqual({event["error_code"] for event in local_logs}, {"outbound_disabled"})
-        self.assertEqual(local_logs[-1]["result"], "success")
-        self.assertGreaterEqual(local_logs[-1]["duration_ms"], 0)
+        self.assertEqual(
+            [event["phase"] for event in local_logs], ["attempt", "complete"]
+        )
+        self.assertEqual(
+            {event["error_code"] for event in local_logs}, {"provider_disabled"}
+        )
         self.assertEqual(result.source, "local")
+        self.assertEqual(result.description_check, "not_checked")
+        self.assertIsNone(result.description_warning)
+        self.assertIsNone(result.summary_description)
         self.assertEqual(result.similar_card_ids, [UUID(int=2)])
         self.assertEqual(result.candidates, candidates)
 
-    async def test_outbound_is_disabled_without_key(self) -> None:
+    async def test_gigachat_is_disabled_without_explicit_opt_in(self) -> None:
         with (
-            patch("src.domain.issues.suggest._load_candidates", new_callable=AsyncMock) as load,
-            patch("src.domain.issues.suggest._groq_suggestion", new_callable=AsyncMock) as groq,
+            patch(
+                "src.domain.issues.suggest._load_candidates", new_callable=AsyncMock
+            ) as load,
+            patch(
+                "src.domain.issues.suggest.gigachat_suggestion", new_callable=AsyncMock
+            ) as giga,
             patch("src.domain.issues.suggest.logger") as logger,
-            patch.dict("os.environ", {"GROQ_SEND_REAL_DATA": "1"}, clear=True),
+            patch.dict(
+                "os.environ",
+                {
+                    "ISSUE_AI_PROVIDER": "gigachat",
+                    "GIGACHAT_AUTH_KEY": "private-auth-key",
+                },
+                clear=True,
+            ),
         ):
             load.return_value = ([], None)
             result = await suggest_issue(
-                SimpleNamespace(), SimpleNamespace(id=UUID(int=1)),
-                house_id=UUID(int=3), description="Лифт сломан"
+                SimpleNamespace(),
+                SimpleNamespace(id=UUID(int=1)),
+                house_id=UUID(int=3),
+                description="Лифт сломан",
             )
-            groq.assert_not_awaited()
-        self.assertEqual(logger.info.call_args.kwargs["extra"]["error_code"], "missing_api_key")
+            giga.assert_not_awaited()
+        self.assertEqual(
+            logger.info.call_args.kwargs["extra"]["error_code"], "outbound_disabled"
+        )
         self.assertEqual(result.source, "local")
+
+    async def test_gigachat_is_disabled_without_key(self) -> None:
+        with (
+            patch(
+                "src.domain.issues.suggest._load_candidates", new_callable=AsyncMock
+            ) as load,
+            patch(
+                "src.domain.issues.suggest.gigachat_suggestion", new_callable=AsyncMock
+            ) as giga,
+            patch("src.domain.issues.suggest.logger") as logger,
+            patch.dict(
+                "os.environ",
+                {
+                    "ISSUE_AI_PROVIDER": "gigachat",
+                    "GIGACHAT_SEND_REAL_DATA": "1",
+                },
+                clear=True,
+            ),
+        ):
+            load.return_value = ([], None)
+            result = await suggest_issue(
+                SimpleNamespace(),
+                SimpleNamespace(id=UUID(int=1)),
+                house_id=UUID(int=3),
+                description="Лифт сломан",
+            )
+            giga.assert_not_awaited()
+        self.assertEqual(
+            logger.info.call_args.kwargs["extra"]["error_code"], "missing_api_key"
+        )
+        self.assertEqual(result.source, "local")
+
+    async def test_unknown_provider_is_configuration_error(self) -> None:
+        with (
+            patch(
+                "src.domain.issues.suggest._load_candidates", new_callable=AsyncMock
+            ) as load,
+            patch(
+                "src.domain.issues.suggest.gigachat_suggestion", new_callable=AsyncMock
+            ) as giga,
+            patch("src.domain.issues.suggest.logger") as logger,
+            patch.dict("os.environ", {"ISSUE_AI_PROVIDER": "unsupported"}, clear=True),
+        ):
+            with self.assertRaises(IssueError) as caught:
+                await suggest_issue(
+                    SimpleNamespace(),
+                    SimpleNamespace(id=UUID(int=1)),
+                    house_id=UUID(int=3),
+                    description="Лифт сломан",
+                )
+            load.assert_not_awaited()
+            giga.assert_not_awaited()
+        self.assertEqual(caught.exception.status_code, 503)
+        self.assertEqual(caught.exception.code, "invalid_ai_provider")
+        self.assertEqual(
+            logger.warning.call_args.kwargs["extra"]["error_code"], "invalid_provider"
+        )
 
     async def test_valid_provider_result_is_only_a_suggestion(self) -> None:
         candidates = [Candidate(UUID(int=2), "Не работает лифт")]
         with (
-            patch("src.domain.issues.suggest._load_candidates", new_callable=AsyncMock) as load,
-            patch("src.domain.issues.suggest._groq_suggestion", new_callable=AsyncMock) as groq,
+            patch(
+                "src.domain.issues.suggest._load_candidates", new_callable=AsyncMock
+            ) as load,
+            patch(
+                "src.domain.issues.suggest.gigachat_suggestion", new_callable=AsyncMock
+            ) as giga,
             patch.dict(
-                "os.environ", {"GROQ_API_KEY": "test-key", "GROQ_SEND_REAL_DATA": "1"}, clear=True
+                "os.environ",
+                {
+                    "ISSUE_AI_PROVIDER": "gigachat",
+                    "GIGACHAT_AUTH_KEY": "private-auth-key",
+                    "GIGACHAT_SEND_REAL_DATA": "1",
+                },
+                clear=True,
             ),
         ):
             load.return_value = (candidates, "Лифт")
-            groq.return_value = ("Не работает лифт", [UUID(int=2)])
-            result = await suggest_issue(
-                SimpleNamespace(), SimpleNamespace(id=UUID(int=1)),
-                house_id=UUID(int=3), description="Не работает лифт в доме"
+            giga.return_value = (
+                "Не работает лифт",
+                [UUID(int=2)],
+                "ok",
+                None,
+                "Лифт в доме не работает.",
             )
-        self.assertEqual(result.source, "groq")
+            result = await suggest_issue(
+                SimpleNamespace(),
+                SimpleNamespace(id=UUID(int=1)),
+                house_id=UUID(int=3),
+                description="Не работает лифт в доме",
+            )
+        self.assertEqual(result.source, "gigachat")
         self.assertEqual(result.similar_card_ids, [UUID(int=2)])
+        self.assertEqual(result.description_check, "ok")
+        self.assertIsNone(result.description_warning)
+        self.assertEqual(result.summary_description, "Лифт в доме не работает.")
+        self.assertEqual(result.candidates, candidates)
 
-    async def test_provider_timeout_returns_manual_path(self) -> None:
-        class TimedOutSession:
-            async def __aenter__(self):
-                raise TimeoutError(
-                    "Provider timed out for private resident description; "
-                    "api_key=private-provider-key"
-                )
-
-            async def __aexit__(self, *_args):
-                return None
-
-        candidates = [Candidate(UUID(int=2), "Не работает лифт")]
-        with (
-            patch("src.domain.issues.suggest._load_candidates", new_callable=AsyncMock) as load,
-            patch("src.domain.issues.suggest.aiohttp.ClientSession", return_value=TimedOutSession()),
-            patch("src.domain.issues.suggest.logger") as logger,
-            patch.dict(
-                "os.environ", {
-                    "GROQ_API_KEY": "private-provider-key",
-                    "GROQ_SEND_REAL_DATA": "1",
-                }, clear=True
-            ),
-        ):
-            load.return_value = (candidates, "Лифт")
-            result = await suggest_issue(
-                SimpleNamespace(), SimpleNamespace(id=UUID(int=1)),
-                house_id=UUID(int=3), description="private resident description"
-            )
-        provider_logs = [call.kwargs["extra"] for call in logger.info.call_args_list]
-        self.assertEqual(provider_logs[0]["phase"], "attempt")
-        failure = logger.warning.call_args.kwargs["extra"]
-        self.assertEqual(failure["event"], "issue_suggestion_groq")
-        self.assertEqual(failure["error_code"], "timeout")
-        self.assertEqual(failure["exception_type"], "TimeoutError")
-        self.assertIn("Provider timed out", failure["exception_message"])
-        self.assertNotIn("private resident description", failure["exception_message"])
-        self.assertNotIn("private-provider-key", failure["exception_message"])
-        self.assertGreaterEqual(failure["duration_ms"], 0)
-        self.assertEqual(logger.info.call_args.kwargs["extra"]["error_code"], "provider_unavailable")
-        self.assertEqual(result.source, "local")
-        self.assertEqual(result.suggested_title, "private resident description")
-
-    async def test_provider_http_status_is_logged_without_reading_body(self) -> None:
+    async def test_provider_warning_does_not_block_suggestion(self) -> None:
         with (
             patch(
-                "src.domain.issues.suggest.aiohttp.ClientSession",
-                return_value=fake_provider_session(429),
-            ),
-            patch("src.domain.issues.suggest.logger") as logger,
-        ):
-            result = await _groq_suggestion(
-                api_key="private-provider-key", model="openai/gpt-oss-20b",
-                category_name=None, description="private resident description", candidates=[],
-            )
-        self.assertIsNone(result)
-        failure = logger.warning.call_args.kwargs["extra"]
-        self.assertEqual(failure["status_code"], 429)
-        self.assertEqual(failure["error_code"], "http_status")
-        self.assertGreaterEqual(failure["duration_ms"], 0)
-        self.assertNotIn("private resident description", json.dumps(failure))
-        self.assertNotIn("private-provider-key", json.dumps(failure))
-
-    async def test_provider_success_logs_status_and_duration_without_content(self) -> None:
-        response = '{"title":"private model title","similar_card_ids":[]}'
-        with (
+                "src.domain.issues.suggest._load_candidates", new_callable=AsyncMock
+            ) as load,
             patch(
-                "src.domain.issues.suggest.aiohttp.ClientSession",
-                return_value=fake_provider_session(200, response),
-            ),
-            patch("src.domain.issues.suggest.logger") as logger,
-        ):
-            result = await _groq_suggestion(
-                api_key="private-provider-key", model="openai/gpt-oss-20b",
-                category_name=None, description="private resident description", candidates=[],
-            )
-        self.assertEqual(result, ("private model title", []))
-        events = [call.kwargs["extra"] for call in logger.info.call_args_list]
-        self.assertEqual([event["phase"] for event in events], ["attempt", "complete"])
-        self.assertEqual(events[-1]["result"], "success")
-        self.assertEqual(events[-1]["status_code"], 200)
-        self.assertGreaterEqual(events[-1]["duration_ms"], 0)
-        self.assertNotIn("private model title", json.dumps(events))
-        self.assertNotIn("private resident description", json.dumps(events))
-
-    async def test_formatted_failure_and_fallback_keep_diagnostics_without_private_data(self) -> None:
-        description = "private resident description"
-        api_key = "private-provider-key"
-        candidate_title = "private candidate title"
-
-        class TimedOutSession:
-            async def __aenter__(self):
-                raise TimeoutError(
-                    f"Provider timed out for {description}; api_key={api_key}; "
-                    f"candidate={candidate_title}"
-                )
-
-            async def __aexit__(self, *_args):
-                return None
-
-        test_logger, output = captured_suggestion_logs()
-        with (
-            patch("src.domain.issues.suggest.logger", test_logger),
-            patch("src.domain.issues.suggest._load_candidates", new_callable=AsyncMock) as load,
-            patch("src.domain.issues.suggest.aiohttp.ClientSession", return_value=TimedOutSession()),
+                "src.domain.issues.suggest.gigachat_suggestion", new_callable=AsyncMock
+            ) as giga,
             patch.dict(
-                "os.environ", {"GROQ_API_KEY": api_key, "GROQ_SEND_REAL_DATA": "1"}, clear=True
+                "os.environ",
+                {
+                    "ISSUE_AI_PROVIDER": "gigachat",
+                    "GIGACHAT_AUTH_KEY": "private-auth-key",
+                    "GIGACHAT_SEND_REAL_DATA": "1",
+                },
+                clear=True,
             ),
         ):
-            load.return_value = ([Candidate(UUID(int=2), candidate_title)], "private category")
-            result = await suggest_issue(
-                SimpleNamespace(), SimpleNamespace(id=UUID(int=1)),
-                house_id=UUID(int=3), description=description,
+            load.return_value = ([], "Лифт")
+            giga.return_value = (
+                "Проблема требует уточнения",
+                [],
+                "warning",
+                "Что именно случилось с лифтом?",
+                "Житель сообщил о проблеме с лифтом.",
             )
-
-        events = [json.loads(line) for line in output.getvalue().splitlines()]
-        self.assertEqual(result.source, "local")
+            result = await suggest_issue(
+                SimpleNamespace(),
+                SimpleNamespace(id=UUID(int=1)),
+                house_id=UUID(int=3),
+                description="Что-то не так",
+            )
+        self.assertEqual(result.source, "gigachat")
+        self.assertEqual(result.description_check, "warning")
+        self.assertEqual(result.description_warning, "Что именно случилось с лифтом?")
+        self.assertEqual(result.similar_card_ids, [])
         self.assertEqual(
-            [(event["event"], event["phase"]) for event in events],
-            [
-                ("issue_suggestion_groq", "attempt"),
-                ("issue_suggestion_groq", "complete"),
-                ("issue_suggestion_local", "attempt"),
-                ("issue_suggestion_local", "complete"),
-            ],
+            result.summary_description, "Житель сообщил о проблеме с лифтом."
         )
-        self.assertEqual(events[1]["error_code"], "timeout")
-        self.assertEqual(events[1]["exception_type"], "TimeoutError")
-        self.assertIn("Provider timed out", events[1]["exception_message"])
-        self.assertGreaterEqual(events[1]["duration_ms"], 0)
-        self.assertEqual(events[3]["error_code"], "provider_unavailable")
-        self.assertGreaterEqual(events[3]["duration_ms"], 0)
-        for private in (description, api_key, candidate_title, "private category"):
-            self.assertNotIn(private, output.getvalue())
-        self.assertNotIn("Сформулируй краткое русское название", output.getvalue())
 
-    async def test_formatted_invalid_json_excludes_model_response(self) -> None:
-        response = "private model response"
-        test_logger, output = captured_suggestion_logs()
-        with (
-            patch("src.domain.issues.suggest.logger", test_logger),
-            patch(
-                "src.domain.issues.suggest.aiohttp.ClientSession",
-                return_value=fake_provider_session(200, response),
-            ),
-        ):
-            result = await _groq_suggestion(
-                api_key="private-provider-key", model="openai/gpt-oss-20b",
-                category_name=None, description="private resident description", candidates=[],
-            )
-        events = [json.loads(line) for line in output.getvalue().splitlines()]
-        self.assertIsNone(result)
-        self.assertEqual(events[1]["error_code"], "invalid_response")
-        self.assertEqual(events[1]["status_code"], 200)
-        self.assertEqual(events[1]["exception_type"], "JSONDecodeError")
-        self.assertIn("Expecting value", events[1]["exception_message"])
-        for private in (response, "private resident description", "private-provider-key"):
-            self.assertNotIn(private, output.getvalue())
-
-    async def test_provider_response_rejects_hallucinated_ids(self) -> None:
-        response = (
-            '{"title":"Лифт сломан","similar_card_ids":'
-            '["00000000-0000-0000-0000-000000000003"]}'
-        )
+    async def test_provider_failure_falls_back_without_private_local_logs(self) -> None:
         with (
             patch(
-                "src.domain.issues.suggest.aiohttp.ClientSession",
-                return_value=fake_provider_session(200, response),
-            ),
+                "src.domain.issues.suggest._load_candidates", new_callable=AsyncMock
+            ) as load,
+            patch(
+                "src.domain.issues.suggest.gigachat_suggestion", new_callable=AsyncMock
+            ) as giga,
             patch("src.domain.issues.suggest.logger") as logger,
+            patch.dict(
+                "os.environ",
+                {
+                    "ISSUE_AI_PROVIDER": "gigachat",
+                    "GIGACHAT_AUTH_KEY": "private-auth-key",
+                    "GIGACHAT_SEND_REAL_DATA": "1",
+                },
+                clear=True,
+            ),
         ):
-            result = await _groq_suggestion(
-                api_key="test-key", model="openai/gpt-oss-20b",
-                category_name=None, description="Лифт сломан",
-                candidates=[Candidate(UUID(int=2), "Лифт сломан")],
+            load.return_value = (
+                [Candidate(UUID(int=2), "private candidate title")],
+                None,
             )
-        self.assertIsNone(result)
-        failure = logger.warning.call_args.kwargs["extra"]
-        self.assertEqual(failure["error_code"], "invalid_response")
-        self.assertEqual(failure["status_code"], 200)
-        self.assertNotIn("Лифт сломан", json.dumps(failure, ensure_ascii=False))
+            giga.return_value = None
+            result = await suggest_issue(
+                SimpleNamespace(),
+                SimpleNamespace(id=UUID(int=1)),
+                house_id=UUID(int=3),
+                description="private resident description",
+            )
+        self.assertEqual(result.source, "local")
+        self.assertIsNone(result.summary_description)
+        self.assertEqual(
+            logger.info.call_args.kwargs["extra"]["error_code"], "provider_unavailable"
+        )
+        logged = str([call.kwargs["extra"] for call in logger.info.call_args_list])
+        self.assertNotIn("private-auth-key", logged)
+        self.assertNotIn("private resident description", logged)
+        self.assertNotIn("private candidate title", logged)
 
 
 if __name__ == "__main__":

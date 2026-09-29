@@ -39,6 +39,11 @@ class IssueCard(Base):
             name="open_has_no_close_result",
         ),
         CheckConstraint("merged_into_id IS NULL OR merged_into_id <> id", name="not_merged_into_self"),
+        CheckConstraint(
+            "length(summary_description) BETWEEN 1 AND 1500 "
+            "AND NULLIF(BTRIM(summary_description), '') IS NOT NULL",
+            name="summary_description_length",
+        ),
         Index("ix_cards_house_status_created", "house_id", "status", "created_at"),
         {"schema": "issues"},
     )
@@ -48,6 +53,7 @@ class IssueCard(Base):
     author_user_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("identity.users.id"))
     category_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("issues.categories.id"))
     title: Mapped[str] = mapped_column(Text, nullable=False)
+    summary_description: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'open'"))
     close_result: Mapped[str | None] = mapped_column(Text)
     current_note: Mapped[str | None] = mapped_column(Text)

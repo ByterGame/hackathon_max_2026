@@ -48,10 +48,14 @@ export async function listFiles(parentKind: FileParent, parentId: string): Promi
   return response.files;
 }
 
-export async function downloadFile(file: PrivateFile): Promise<void> {
-  const params = new URLSearchParams({ file_id: file.id });
+export async function fetchPrivateFileBlob(fileId: string): Promise<Blob> {
+  const params = new URLSearchParams({ file_id: fileId });
   const response = await requestResponse(`/files/download?${params}`);
-  const url = URL.createObjectURL(await response.blob());
+  return response.blob();
+}
+
+export async function downloadFile(file: PrivateFile): Promise<void> {
+  const url = URL.createObjectURL(await fetchPrivateFileBlob(file.id));
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = file.original_name;

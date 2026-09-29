@@ -52,6 +52,8 @@ class HouseAdditionRequest(Base):
     __table_args__ = (
         CheckConstraint(REQUEST_STATUS_CHECK, name="status_allowed"),
         CheckConstraint("outcome IS NULL OR outcome IN ('approved', 'rejected')", name="outcome_allowed"),
+        CheckConstraint("entrance_count IS NULL OR entrance_count > 0", name="entrance_count_positive"),
+        CheckConstraint("apartment_count IS NULL OR apartment_count > 0", name="apartment_count_positive"),
         CheckConstraint(
             "registration_request_id IS NOT NULL OR company_id IS NOT NULL",
             name="request_has_company_source",
@@ -68,6 +70,8 @@ class HouseAdditionRequest(Base):
     )
     company_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("housing.companies.id"))
     entered_address: Mapped[str] = mapped_column(Text, nullable=False)
+    entrance_count: Mapped[int | None] = mapped_column(Integer)
+    apartment_count: Mapped[int | None] = mapped_column(Integer)
     resolved_house_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("housing.houses.id"))
     free_text: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'open'"))
@@ -93,7 +97,7 @@ class ResidentRequest(Base):
     __tablename__ = "resident_requests"
     __table_args__ = (
         CheckConstraint(REQUEST_STATUS_CHECK, name="status_allowed"),
-        CheckConstraint("submitted_entrance_number > 0", name="entrance_number_positive"),
+        CheckConstraint("submitted_entrance_number IS NULL OR submitted_entrance_number > 0", name="entrance_number_positive"),
         CheckConstraint("submitted_apartment_number > 0", name="apartment_number_positive"),
         CheckConstraint("outcome IS NULL OR outcome IN ('granted', 'denied')", name="outcome_allowed"),
         CheckConstraint(
@@ -108,7 +112,6 @@ class ResidentRequest(Base):
             "uq_resident_requests_active_location",
             "applicant_user_id",
             "house_id",
-            "submitted_entrance_number",
             "submitted_apartment_number",
             unique=True,
             postgresql_where=text("status IN ('open', 'reviewing', 'needs_info')"),
@@ -120,7 +123,7 @@ class ResidentRequest(Base):
     applicant_user_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("identity.users.id"))
     house_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("housing.houses.id"))
     submitted_full_name: Mapped[str] = mapped_column(Text, nullable=False)
-    submitted_entrance_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    submitted_entrance_number: Mapped[int | None] = mapped_column(Integer)
     submitted_apartment_number: Mapped[int] = mapped_column(Integer, nullable=False)
     resolved_apartment_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("housing.apartments.id")

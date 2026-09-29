@@ -26,6 +26,7 @@ async def edit_card(
             expected_version=body.expected_version,
             category_id=body.category_id,
             title=body.title,
+            summary_description=body.summary_description,
             scope_all_house=body.scope_all_house,
             target_entrances=body.target_entrances or [],
             target_apartments=[

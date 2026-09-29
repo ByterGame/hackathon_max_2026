@@ -37,6 +37,7 @@ from src.bot.ui import Button, UiReply, clear_dialog, get_dialog, keyboard_for
 from src.common.auth import (
     get_or_create_user,
     link_verified_phone,
+    max_profile_name,
     validate_bot_contact,
 )
 from src.core.logging import current_request_id
@@ -102,6 +103,7 @@ def _home(actor: User) -> UiReply:
             "Кабинет поддержки. Выберите, с чем работать:",
             [
                 [Button("Обращения УК и домов", "a:support")],
+                [Button("Моё ФИО", "a:profile")],
                 [Button("Уведомления", "n:list")],
             ],
         )
@@ -116,8 +118,9 @@ def _home(actor: User) -> UiReply:
             "Кабинет сотрудника УК. Выберите раздел:",
             [
                 [Button("Дома и проблемы", "a:staff_houses")],
-                [Button("Заявки жителей", "a:staff_requests")],
+                [Button("Заявки жильцов", "a:staff_requests")],
                 [Button("Сотрудники и права", "a:staff")],
+                [Button("Моё ФИО", "a:profile")],
                 [Button("Черновики", "d:list"), Button("Уведомления", "n:list")],
             ],
         )
@@ -132,6 +135,7 @@ def _home(actor: User) -> UiReply:
                     Button("Заявки на доступ", "a:requests:resident"),
                 ],
                 [Button("Предложения доступа", "a:offers")],
+                [Button("Моё ФИО", "a:profile")],
                 [Button("Черновики", "d:list"), Button("Уведомления", "n:list")],
             ],
         )
@@ -145,6 +149,7 @@ def _home(actor: User) -> UiReply:
             [Button("Мои заявки на дома", "a:requests:house_addition")],
             [Button("Предложения доступа", "a:offers")],
             [Button("Зарегистрировать УК", "a:register_company")],
+            [Button("Моё ФИО", "a:profile")],
             [Button("Черновики", "d:list"), Button("Уведомления", "n:list")],
         ],
     )
@@ -426,11 +431,12 @@ def build_router(
         async with session_factory() as session:
             try:
                 trace.phase = "resolve_actor"
-                full_name = " ".join(
-                    item for item in (sender.first_name, sender.last_name) if item
-                )
+                full_name = max_profile_name(sender.first_name, sender.last_name)
                 actor = await get_or_create_user(
-                    session, str(sender.user_id), full_name=full_name or None
+                    session,
+                    str(sender.user_id),
+                    full_name=full_name,
+                    max_username=getattr(sender, "username", None),
                 )
                 trace.actor_id = str(actor.id)
                 content = body.text or (
@@ -609,11 +615,12 @@ def build_router(
             async with session_factory() as session:
                 try:
                     trace.phase = "resolve_actor"
-                    full_name = " ".join(
-                        item for item in (sender.first_name, sender.last_name) if item
-                    )
+                    full_name = max_profile_name(sender.first_name, sender.last_name)
                     actor = await get_or_create_user(
-                        session, str(sender.user_id), full_name=full_name or None
+                        session,
+                        str(sender.user_id),
+                        full_name=full_name,
+                        max_username=getattr(sender, "username", None),
                     )
                     trace.actor_id = str(actor.id)
                     trace.phase = "reserve_update"
@@ -667,11 +674,12 @@ def build_router(
         async with session_factory() as session:
             try:
                 trace.phase = "resolve_actor"
-                full_name = " ".join(
-                    item for item in (sender.first_name, sender.last_name) if item
-                )
+                full_name = max_profile_name(sender.first_name, sender.last_name)
                 actor = await get_or_create_user(
-                    session, str(sender.user_id), full_name=full_name or None
+                    session,
+                    str(sender.user_id),
+                    full_name=full_name,
+                    max_username=getattr(sender, "username", None),
                 )
                 trace.actor_id = str(actor.id)
                 trace.phase = "reserve_update"

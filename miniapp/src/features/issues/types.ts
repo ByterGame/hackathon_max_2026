@@ -1,3 +1,5 @@
+import { formatCount } from "../../shared/format_count";
+
 export type Role = "resident" | "employee";
 
 export type IssueStatus =
@@ -14,6 +16,7 @@ export interface House {
   address: string;
   company: string;
   entranceCount?: number;
+  apartmentCount?: number;
   companyId?: string;
 }
 
@@ -26,7 +29,7 @@ export interface IssueCategory {
 export interface IssueScope {
   allHouse: boolean;
   entrances: number[];
-  apartments: { entrance: number; number: number }[];
+  apartments: { number: number; entrance?: number }[];
 }
 
 export interface IssueMessage {
@@ -51,6 +54,7 @@ export interface Issue {
   title: string;
   category: string;
   description: string;
+  summaryDescription: string;
   scope: IssueScope;
   status: IssueStatus;
   closeResult?: CloseResult;
@@ -73,11 +77,13 @@ export interface CreateIssueInput {
   title: string;
   category: string;
   description: string;
+  summaryDescription?: string;
   scope: IssueScope;
 }
 
 export interface EditIssueInput {
   title: string;
+  summaryDescription: string;
   category: string;
   scope: IssueScope;
 }
@@ -87,7 +93,7 @@ export interface ResidentRequest {
   houseId: string;
   address?: string;
   fullName: string;
-  entrance: number;
+  entrance?: number;
   apartment: number;
   status: "open" | "reviewing" | "needs_info" | "closed" | "cancelled";
   outcome?: "granted" | "denied";
@@ -113,6 +119,9 @@ export interface HouseAdditionRequest {
   registrationRequestId?: string;
   companyId?: string;
   address: string;
+  entranceCount?: number;
+  apartmentCount?: number;
+  resolvedHouseId?: string;
   explanation?: string;
   status: string;
   outcome?: "approved" | "rejected";
@@ -141,7 +150,7 @@ export interface ResidentGrant {
   houseId: string;
   fullName: string;
   phone: string;
-  entrance: number;
+  entrance?: number;
   apartment: number;
   validUntil?: string;
   status?: "active" | "expired" | "revoked";
@@ -153,7 +162,7 @@ export interface ResidentOffer {
   id: string;
   houseId: string;
   phone: string;
-  entrance: number;
+  entrance?: number;
   apartment: number;
   status: "pending" | "accepted" | "declined" | "cancelled";
   createdAt: string;
@@ -190,9 +199,19 @@ export function formatIssueScope(scope: IssueScope): string {
 
   const parts = [
     ...scope.entrances.map((number) => `подъезд №${number}`),
-    ...scope.apartments.map((item) => `квартира №${item.number} (подъезд №${item.entrance})`),
+    ...scope.apartments.map((item) => `квартира №${item.number}${item.entrance ? ` (подъезд №${item.entrance})` : ""}`),
   ];
   return parts.join(", ") || "Область не указана";
+}
+
+export function formatApartmentLocation(apartment: number, entrance?: number): string {
+  return `кв. ${apartment > 0 ? apartment : "—"}${entrance && entrance > 0 ? `, подъезд №${entrance}` : ""}`;
+}
+
+export function formatHouseCounts(entranceCount?: number | null, apartmentCount?: number | null): string {
+  const entrances = entranceCount == null ? "Подъезды: —" : formatCount(entranceCount, ["подъезд", "подъезда", "подъездов"]);
+  const apartments = apartmentCount == null ? "Квартиры: —" : formatCount(apartmentCount, ["квартира", "квартиры", "квартир"]);
+  return `${entrances} · ${apartments}`;
 }
 
 export function formatDate(value: string): string {

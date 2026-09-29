@@ -35,6 +35,7 @@ async def card_model(
         author_user_id=card.author_user_id,
         category_id=card.category_id,
         title=card.title,
+        summary_description=card.summary_description,
         status=card.status,
         close_result=card.close_result,
         current_note=card.current_note,

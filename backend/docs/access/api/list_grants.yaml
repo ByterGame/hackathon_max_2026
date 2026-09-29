@@ -33,7 +33,7 @@ schemas:
       address_display:
         type: string
       entrance_number:
-        type: integer
+        type: [integer, 'null']
       apartment_number:
         type: integer
       valid_from:

@@ -72,6 +72,7 @@ class BotRouterTests(unittest.IsolatedAsyncioTestCase):
                 "user_id": self.sender.user_id,
                 "first_name": self.sender.first_name,
                 "last_name": self.sender.last_name,
+                "username": getattr(self.sender, "username", None),
                 "is_bot": False,
                 "last_activity_time": 0,
             },
@@ -94,7 +95,7 @@ class BotRouterTests(unittest.IsolatedAsyncioTestCase):
             await self.started_handler(event)
 
         resolve_actor.assert_awaited_once_with(
-            self.session, "123", full_name="Иван Иванов"
+            self.session, "123", full_name="Иван Иванов", max_username=None
         )
         reserve.assert_awaited_once_with(
             self.session,
@@ -114,6 +115,19 @@ class BotRouterTests(unittest.IsolatedAsyncioTestCase):
         }
         self.assertIn("i:new", payloads)
         self.assertIn("menu", payloads)
+
+    async def test_start_passes_max_username_to_profile_sync(self) -> None:
+        self.sender.username = "ivan"
+        event = self._started_event()
+        with (
+            patch.object(commands, "get_or_create_user", new=AsyncMock(return_value=self.actor)) as resolve_actor,
+            patch.object(commands, "_reserve_message", new=AsyncMock(return_value=True)),
+            patch.object(commands, "clear_dialog", new=AsyncMock()),
+        ):
+            await self.started_handler(event)
+        resolve_actor.assert_awaited_once_with(
+            self.session, "123", full_name="Иван Иванов", max_username="ivan"
+        )
 
     async def test_start_button_prompts_unverified_user_to_share_contact(self) -> None:
         self.actor.phone_verified_at = None

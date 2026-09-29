@@ -11,6 +11,7 @@ from src.bot.handlers.access_discussion import discussion_pages, page_number
 from src.db.models import User
 from src.domain.access import company, queries, requests, resident, staff
 from src.domain.access.rules import AccessRuleError
+from src.domain.profile import has_confirmed_full_name, update_profile_name
 
 
 class UsageError(ValueError):
@@ -19,17 +20,19 @@ class UsageError(ValueError):
 
 HELP = """Команды доступа (ID можно скопировать из списков):
 /access houses <часть адреса>
-/access resident apply <house_id> <подъезд> <квартира> <ФИО>
-/access resident edit <request_id> <подъезд> <квартира> <ФИО>
+/access profile [name <ФИО>] — посмотреть или явно изменить общее ФИО
+/access resident apply <house_id> <квартира> [ФИО при первой заявке]
+/access resident edit <request_id> <квартира>
 /access resident decide <request_id> grant|deny <пояснение> [until=2026-12-01T00:00:00+03:00]
-/access resident offer <house_id> <подъезд> <квартира> <телефон> [until=...]
+/access resident offer <house_id> <квартира> <телефон> [until=...]
 /access resident offers | grants | people <company_id> [house_id]
 /access resident respond <offer_id> yes|no
 /access resident extend <grant_id> <дата ISO>; revoke <grant_id> <причина>
 /access company register <телефон> <название> | <описание>
-/access company house reg:<request_id>|company:<company_id> <адрес>
+/access company house reg:<request_id>|company:<company_id> <подъезды> <квартиры> <адрес>
 /access company decide <request_id> approve|reject <название или -> | <пояснение>
-/access company house_decide <request_id> approve|reject <пояснение>
+/access company house_decide <request_id> approve|reject <пояснение> [entrances=N] [apartments=N]
+/access company house_details <house_id> <подъезды> <квартиры> — исправить подключённый дом
 /access company houses <company_id>
 /access staff list <company_id>; assign <company_id> <телефон> <0|1> <0|1> <0|1>; revoke <assignment_id>
 /access requests list <company_registration|house_addition|resident> [house_id]
@@ -45,15 +48,13 @@ def _uuid(value: str) -> UUID:
         raise UsageError("Нужен корректный UUID из списка заявок/домов") from error
 
 
-def _positive(value: str) -> int:
+def _positive(value: str, label: str = "Номер квартиры") -> int:
     try:
         number = int(value)
     except ValueError as error:
-        raise UsageError(
-            "Номер подъезда и квартиры должен быть целым числом"
-        ) from error
+        raise UsageError(f"{label} должен быть целым числом") from error
     if number <= 0:
-        raise UsageError("Номер подъезда и квартиры должен быть положительным")
+        raise UsageError(f"{label} должен быть положительным")
     return number
 
 
@@ -197,28 +198,34 @@ async def _resident(session: AsyncSession, user: User, parts: list[str]) -> str:
     action = parts[1]
     if action == "apply":
         _required(
-            parts, 6, "/access resident apply <house_id> <подъезд> <квартира> <ФИО>"
+            parts, 4, "/access resident apply <house_id> <квартира> [ФИО при первой заявке]"
         )
+        legacy = len(parts) >= 6 and parts[4].isascii() and parts[4].isdecimal()
+        entrance = _positive(parts[3], "Номер подъезда") if legacy else None
+        apartment = _positive(parts[4] if legacy else parts[3])
         row = await resident.create_resident_request(
             session,
             user,
             house_id=_uuid(parts[2]),
-            entrance_number=_positive(parts[3]),
-            apartment_number=_positive(parts[4]),
-            full_name=_tail(parts, 5),
+            apartment_number=apartment,
+            full_name=" ".join(parts[5 if legacy else 4:]).strip() or None,
+            **({"entrance_number": entrance} if entrance is not None else {}),
         )
         return f"Заявка отправлена: {row.id}. Статус: открыта."
     if action == "edit":
         _required(
-            parts, 6, "/access resident edit <request_id> <подъезд> <квартира> <ФИО>"
+            parts, 4, "/access resident edit <request_id> <квартира>"
         )
+        legacy = len(parts) >= 6 and parts[4].isascii() and parts[4].isdecimal()
+        entrance = _positive(parts[3], "Номер подъезда") if legacy else None
+        apartment = _positive(parts[4] if legacy else parts[3])
         row = await resident.update_resident_request(
             session,
             user,
             request_id=_uuid(parts[2]),
-            entrance_number=_positive(parts[3]),
-            apartment_number=_positive(parts[4]),
-            full_name=_tail(parts, 5),
+            apartment_number=apartment,
+            full_name=" ".join(parts[5 if legacy else 4:]).strip() or None,
+            **({"entrance_number": entrance} if entrance is not None else {}),
         )
         return f"Заявка {row.id} исправлена."
     if action == "decide":
@@ -246,20 +253,24 @@ async def _resident(session: AsyncSession, user: User, parts: list[str]) -> str:
     if action == "offer":
         _required(
             parts,
-            6,
-            "/access resident offer <house_id> <подъезд> <квартира> <телефон> [until=...]",
+            5,
+            "/access resident offer <house_id> <квартира> <телефон> [until=...]",
         )
-        valid_to = _until(parts[6]) if len(parts) > 6 else None
+        legacy = len(parts) >= 6 and not parts[5].startswith("until=")
+        entrance = _positive(parts[3], "Номер подъезда") if legacy else None
+        apartment = _positive(parts[4] if legacy else parts[3])
+        phone_index = 5 if legacy else 4
+        valid_to = _until(parts[phone_index + 1]) if len(parts) > phone_index + 1 else None
         row = await resident.create_resident_offer(
             session,
             user,
             house_id=_uuid(parts[2]),
-            entrance_number=_positive(parts[3]),
-            apartment_number=_positive(parts[4]),
-            phone_number=parts[5],
+            apartment_number=apartment,
+            phone_number=parts[phone_index],
             valid_to=valid_to,
+            **({"entrance_number": entrance} if entrance is not None else {}),
         )
-        return f"Предложение доступа создано: {row.id}. Житель должен его принять."
+        return f"Предложение доступа создано: {row.id}. Жилец должен его принять."
     if action == "offers":
         return _list(await queries.list_offers(session, user))
     if action == "grants":
@@ -303,12 +314,12 @@ async def _resident(session: AsyncSession, user: User, parts: list[str]) -> str:
             reason=_tail(parts, 3),
         )
         return f"Доступ {row.id} отозван."
-    raise UsageError("Неизвестная команда жителя. Отправьте /access help")
+    raise UsageError("Неизвестная команда жильца. Отправьте /access help")
 
 
 async def _company(session: AsyncSession, user: User, parts: list[str]) -> str:
     _required(
-        parts, 2, "/access company <register|house|decide|house_decide|houses> ..."
+        parts, 2, "/access company <register|house|decide|house_decide|house_details|houses> ..."
     )
     action = parts[1]
     if action == "register":
@@ -325,7 +336,11 @@ async def _company(session: AsyncSession, user: User, parts: list[str]) -> str:
         )
         return f"Обращение о регистрации УК отправлено: {row.id}."
     if action == "house":
-        _required(parts, 4, "/access company house reg:<id>|company:<id> <адрес>")
+        _required(
+            parts,
+            6,
+            "/access company house reg:<id>|company:<id> <подъезды> <квартиры> <адрес>",
+        )
         source = parts[2]
         if source.startswith("reg:"):
             reg_id, company_id = _uuid(source[4:]), None
@@ -338,7 +353,9 @@ async def _company(session: AsyncSession, user: User, parts: list[str]) -> str:
             user,
             registration_request_id=reg_id,
             company_id=company_id,
-            entered_address=_tail(parts, 3),
+            entered_address=_tail(parts, 5),
+            entrance_count=_positive(parts[3], "Количество подъездов"),
+            apartment_count=_positive(parts[4], "Количество квартир"),
             free_text=None,
         )
         return f"Заявка на дом отправлена: {row.id}."
@@ -365,22 +382,54 @@ async def _company(session: AsyncSession, user: User, parts: list[str]) -> str:
         )
     if action == "house_decide":
         _required(
-            parts, 5, "/access company house_decide <id> approve|reject <пояснение>"
+            parts,
+            5,
+            "/access company house_decide <id> approve|reject <пояснение> [entrances=N] [apartments=N]",
         )
         outcome = {"approve": "approved", "reject": "rejected"}.get(parts[3])
         if outcome is None:
             raise UsageError("Результат: approve или reject")
+        tail = parts[4:]
+        counts: dict[str, int] = {}
+        while tail and (tail[-1].startswith("entrances=") or tail[-1].startswith("apartments=")):
+            name, _, value = tail.pop().partition("=")
+            if name in counts:
+                raise UsageError(f"Параметр {name} указан дважды")
+            label = "Количество подъездов" if name == "entrances" else "Количество квартир"
+            counts[name] = _positive(value, label)
+        if outcome == "rejected" and counts:
+            raise UsageError("Для отказа не нужно менять количество подъездов или квартир")
         row, house = await company.decide_house_request(
             session,
             user,
             request_id=_uuid(parts[2]),
             outcome=outcome,
-            decision_note=_tail(parts, 4),
+            decision_note=_tail(tail, 0),
             proposed_address_key=None,
-            entrance_count=None,
+            entrance_count=counts.get("entrances"),
+            apartment_count=counts.get("apartments"),
         )
         return f"Заявка {row.id} закрыта: {outcome}." + (
             f" Дом: {house.id}." if house else ""
+        )
+    if action == "house_details":
+        _required(
+            parts,
+            5,
+            "/access company house_details <house_id> <подъезды> <квартиры>",
+        )
+        if len(parts) != 5:
+            raise UsageError("Укажите UUID дома, количество подъездов и квартир")
+        house = await company.update_house_details(
+            session,
+            user,
+            house_id=_uuid(parts[2]),
+            entrance_count=_positive(parts[3], "Количество подъездов"),
+            apartment_count=_positive(parts[4], "Количество квартир"),
+        )
+        return (
+            f"Дом {house.id} обновлён: подъездов {house.entrance_count}, "
+            f"квартир {house.apartment_count}."
         )
     if action == "houses":
         _required(parts, 3, "/access company houses <company_id>")
@@ -498,6 +547,19 @@ async def handle_access_text(
         if section == "houses":
             _required(args, 2, "/access houses <часть адреса>")
             return _list(await queries.search_houses(session, _tail(args, 1)))
+        if section == "profile":
+            if len(args) == 1:
+                name = getattr(user, "full_name", None) or "не указано"
+                state = (
+                    "подтверждено"
+                    if has_confirmed_full_name(user)
+                    else "получено из MAX, требуется подтверждение"
+                )
+                return f"Общее ФИО: {name} ({state}). Изменить: /access profile name <ФИО>"
+            if len(args) < 3 or args[1] != "name":
+                raise UsageError("Формат: /access profile name <ФИО>")
+            updated = await update_profile_name(session, user, full_name=_tail(args, 2))
+            return f"Общее ФИО подтверждено: {updated.full_name}. Незакрытые заявки обновлены."
         if section == "resident":
             return await _resident(session, user, args)
         if section == "company":

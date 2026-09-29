@@ -2,13 +2,15 @@
 
 from uuid import UUID
 
-from pydantic import BaseModel, constr
+from pydantic import BaseModel, conint, constr
 
 
 class Request(BaseModel):
     registration_request_id: UUID | None = None
     company_id: UUID | None = None
     entered_address: constr(min_length=1)
+    entrance_count: conint(ge=1)
+    apartment_count: conint(ge=1)
     free_text: str | None = None
 
 

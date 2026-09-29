@@ -83,6 +83,35 @@ export interface AdminSystemDetail {
   dependencies: { entity: string; field: string; count: number }[];
   delete_mode: "soft" | "hard";
   delete_modes: ("soft" | "hard")[];
+  cascade_preview?: AdminSystemCascadePreview | null;
+}
+
+export interface AdminSystemCascadePreview {
+  hash: string;
+  total: number;
+  rows: {
+    entity: string;
+    id: string;
+    via: { kind: string; from_entity: string; from_id: string; field: string }[];
+  }[];
+  counts: { entity: string; count: number }[];
+  files: { id: string; original_name: string; size_bytes: number }[];
+  updates: { entity: string; id: string; field: string; before: unknown; after: unknown }[];
+  blockers: string[];
+}
+
+export interface AdminSystemFileCleanup {
+  status: "done" | "pending" | "failed";
+  deleted: number;
+  failed: number;
+  failed_file_ids?: string[];
+}
+
+export interface AdminSystemDeleteResult {
+  item: AdminSystemRow | null;
+  operation_id: string;
+  mode: "soft" | "hard";
+  file_cleanup?: AdminSystemFileCleanup;
 }
 
 export interface AdminSystemOperation {
@@ -123,13 +152,20 @@ export function patchAdminSystemRow(entity: string, id: string, etag: string, re
   return requestJson("/admin/system/patch", { method: "POST", body: JSON.stringify({ entity, id, expected_etag: etag, reason, changes }) });
 }
 
-export function deleteAdminSystemRow(entity: string, id: string, etag: string, reason: string, mode: "soft" | "hard"): Promise<{ item: AdminSystemRow | null; operation_id: string; mode: "soft" | "hard" }> {
-  return requestJson("/admin/system/delete", { method: "POST", body: JSON.stringify({ entity, id, expected_etag: etag, reason, mode }) });
+export function deleteAdminSystemRow(entity: string, id: string, etag: string, reason: string, mode: "soft" | "hard", previewHash?: string): Promise<AdminSystemDeleteResult> {
+  return requestJson("/admin/system/delete", { method: "POST", body: JSON.stringify({ entity, id, expected_etag: etag, reason, mode, ...(mode === "hard" ? { expected_preview_hash: previewHash } : {}) }) });
 }
 
 export function listAdminSystemOperations(query: string, offset: number, limit = 20): Promise<AdminSystemOperationsPage> {
   const params = new URLSearchParams({ q: query, offset: String(offset), limit: String(limit) });
   return requestJson<AdminSystemOperationsPage>(`/admin/system/operations?${params}`);
+}
+
+export function retryAdminSystemFileCleanup(operationId: string): Promise<AdminSystemFileCleanup> {
+  return requestJson("/admin/system/cleanup", {
+    method: "POST",
+    body: JSON.stringify({ operation_id: operationId }),
+  });
 }
 
 export function getAdminOverview(): Promise<AdminOverview> {

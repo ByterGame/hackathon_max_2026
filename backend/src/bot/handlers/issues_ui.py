@@ -80,7 +80,7 @@ def _button(text: str, payload: str) -> list[Button]:
 
 
 def _scope_label(
-    all_house: bool, entrances: list[int], apartments: list[tuple[int, int]]
+    all_house: bool, entrances: list[int], apartments: list[tuple[int | None, int]]
 ) -> str:
     if all_house:
         return "весь дом"
@@ -90,12 +90,15 @@ def _scope_label(
     if apartments:
         parts.append(
             "квартиры "
-            + ", ".join(
-                f"{entrance}/{apartment}"
-                for entrance, apartment in sorted(set(apartments))
-            )
+            + ", ".join(map(str, sorted({apartment for _, apartment in apartments})))
         )
     return "; ".join(parts) or "не указана"
+
+
+def _summary_text(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    return " ".join(value.split()) or None
 
 
 def _stale() -> UiReply:
@@ -290,12 +293,14 @@ async def _card(
         f"Категория: {category.name if category else '—'} · Поддержали: {support_count or 0}",
         f"Область: {scope}",
     ]
+    if summary := getattr(card, "summary_description", None):
+        lines.append(f"Краткое формализованное описание: {summary}")
     if card.current_note:
         lines.append(f"Пояснение УК: {card.current_note}")
     if card.close_result:
         lines.append(f"Результат: {card.close_result}")
     if reports:
-        lines.append("Описание: " + reports[0].raw_description)
+        lines.append("Исходное описание: " + reports[0].raw_description)
     if messages:
         lines.append("Обсуждение:")
         lines.extend(
@@ -355,7 +360,7 @@ async def _discussion(
             report.created_at,
             report.id,
             f"{report.created_at:%d.%m %H:%M} · "
-            f"{'Ваше дополнение' if report.author_user_id == actor.id else 'Дополнение жителя'}: "
+            f"{'Ваше дополнение' if report.author_user_id == actor.id else 'Дополнение жильца'}: "
             f"{report.raw_description}",
         )
         for report in reports
@@ -448,15 +453,15 @@ async def _scope_options(
     buttons = [_button("Весь дом", "i:scope:all")]
     entrances = set()
     for entrance, apartment in locations:
-        if entrance not in entrances:
+        if entrance is not None and entrance not in entrances:
             buttons.append(
                 _button(f"Подъезд {entrance}", f"i:scope:entrance:{entrance}")
             )
             entrances.add(entrance)
         buttons.append(
             _button(
-                f"Моя квартира {entrance}/{apartment}",
-                f"i:scope:apartment:{entrance}:{apartment}",
+                f"Моя квартира {apartment}",
+                f"i:scope:apartment:{apartment}",
             )
         )
     buttons.extend(
@@ -489,19 +494,30 @@ async def _prepare_preview(
         for item in suggestion.candidates
         if item.id in suggestion.similar_card_ids
     ]
+    data["suggestion_source"] = suggestion.source
+    data["description_check"] = suggestion.description_check
+    data["description_warning"] = suggestion.description_warning
     title = str(data.get("title") or suggestion.suggested_title)
     data["title"] = title
+    suggested_summary = _summary_text(getattr(suggestion, "summary_description", None))
+    previous_summary = _summary_text(data.get("summary_description"))
+    summary = previous_summary or suggested_summary or description
+    data["summary_description"] = summary
+    data["_summary_fallback"] = (
+        bool(data.get("_summary_fallback")) if previous_summary else suggested_summary is None
+    )
     payload = {
         "house_id": str(house_id),
         "category_id": str(category_id),
         "scope_all_house": all_house,
         "target_entrances": entrances,
         "target_apartments": [
-            {"entrance_number": entrance, "apartment_number": apartment}
-            for entrance, apartment in apartments
+            {"apartment_number": apartment}
+            for _, apartment in apartments
         ],
         "title": title,
         "description": description,
+        "summary_description": summary,
     }
     previous = (
         await get_draft(session, actor, dialog.draft_id) if dialog.draft_id else None
@@ -529,8 +545,33 @@ def _preview(dialog: BotDialog) -> UiReply:
         "Проверьте обращение:",
         f"Название: {data.get('title', '—')}",
         f"Область: {scope_text}",
-        f"Описание: {data.get('description', '—')}",
+        f"Исходное описание: {data.get('description', '—')}",
+        "Краткое формализованное описание: "
+        + str(data.get("summary_description") or data.get("description", "—")),
     ]
+    if data.get("_summary_fallback") or not data.get("summary_description"):
+        lines.append(
+            "Автоматическая сводка недоступна: пока используется исходное описание. "
+            + (
+                "Его можно исправить ниже."
+                if dialog.step == "attachments"
+                else "Изменить его можно на заключительном экране."
+            )
+        )
+    if data.get("suggestion_source") == "gigachat":
+        lines.append("GigaChat обработал описание и поискал похожие проблемы.")
+        if data.get("description_check") == "warning":
+            lines.append(
+                "Стоит уточнить описание: "
+                + str(data.get("description_warning") or "Что именно случилось и где?")
+            )
+        else:
+            lines.append("Описание достаточно понятно для подачи заявки.")
+    elif data.get("suggestion_source") == "local":
+        lines.append(
+            "Нейросеть не использовалась: название взято из первой фразы, "
+            "поиск похожих карточек — по совпадению слов."
+        )
     buttons: list[list[Button]] = []
     for item in data.get("suggestions", []):
         buttons.append(
@@ -555,11 +596,12 @@ def _preview(dialog: BotDialog) -> UiReply:
         lines.append(
             "Можете прислать фото, PDF или видео следующим сообщением либо отправить без вложений."
         )
+        buttons.append(_button("Изменить краткое описание", "i:issue:edit_summary"))
         buttons.append(_button("Отправить обращение", "i:issue:submit"))
     else:
         buttons.append(_button("Создать новую карточку", "i:issue:continue"))
     buttons.append(_button("Назад", "i:back"))
-    return UiReply("\n".join(lines)[:3200], buttons)
+    return UiReply("\n".join(lines)[:3900], buttons)
 
 
 async def _resume(session: AsyncSession, actor: User, draft_id: UUID) -> UiReply:
@@ -588,7 +630,7 @@ async def _resume(session: AsyncSession, actor: User, draft_id: UUID) -> UiReply
             sections.append(
                 "a:"
                 + ",".join(
-                    f"{item['entrance_number']}:{item['apartment_number']}"
+                    str(item["apartment_number"])
                     for item in apartments
                 )
             )
@@ -601,10 +643,28 @@ async def _resume(session: AsyncSession, actor: User, draft_id: UUID) -> UiReply
         description=str(payload["description"]),
         category_id=_uuid(str(payload["category_id"])),
     )
+    stored_summary = _summary_text(payload.get("summary_description"))
+    suggested_summary = _summary_text(getattr(suggestion, "summary_description", None))
+    summary = stored_summary or suggested_summary or str(payload["description"])
+    fallback = suggested_summary is None and stored_summary in {
+        None,
+        _summary_text(payload["description"]),
+    }
+    if stored_summary is None:
+        draft = await save_draft(
+            session,
+            actor,
+            flow_kind="issue_card",
+            payload={**payload, "summary_description": summary},
+            draft_id=draft.id,
+            revision=draft.revision,
+        )
     data = {
         "house_id": str(house_id),
         "category_id": str(payload["category_id"]),
         "description": str(payload["description"]),
+        "summary_description": summary,
+        "_summary_fallback": fallback,
         "title": str(payload["title"]),
         "scope": scope,
         "draft_revision": draft.revision,
@@ -613,6 +673,9 @@ async def _resume(session: AsyncSession, actor: User, draft_id: UUID) -> UiReply
             for item in suggestion.candidates
             if item.id in suggestion.similar_card_ids
         ],
+        "suggestion_source": suggestion.source,
+        "description_check": suggestion.description_check,
+        "description_warning": suggestion.description_warning,
     }
     dialog = await set_dialog(
         session,
@@ -707,6 +770,9 @@ async def _back(session: AsyncSession, actor: User) -> UiReply:
             )
         if dialog.step == "edit_title":
             await update_dialog(dialog, step="review")
+            return _preview(dialog)
+        if dialog.step == "edit_summary":
+            await update_dialog(dialog, step="attachments")
             return _preview(dialog)
         if dialog.step == "attachments":
             await update_dialog(dialog, step="review")
@@ -803,7 +869,7 @@ async def _handle_action(session: AsyncSession, actor: User, payload: str) -> Ui
         await update_dialog(dialog, step="scope_custom")
         return UiReply(
             "Укажите область: `all` — весь дом, `e:1,2` — подъезды, "
-            "`a:1:12,2:18` — квартиры, `e:1+a:2:18` — вместе.",
+            "`a:12,18` — квартиры, `e:1+a:18` — вместе.",
             [_button("Назад", "i:back")],
         )
     if payload.startswith("i:scope:"):
@@ -815,8 +881,11 @@ async def _handle_action(session: AsyncSession, actor: User, payload: str) -> Ui
             scope = "all"
         elif len(parts) == 4 and parts[2] == "entrance":
             scope = f"e:{int(parts[3])}"
+        elif len(parts) == 4 and parts[2] == "apartment":
+            scope = f"a:{int(parts[3])}"
         elif len(parts) == 5 and parts[2] == "apartment":
-            scope = f"a:{int(parts[3])}:{int(parts[4])}"
+            # Older MAX messages may still contain an entrance in the callback.
+            scope = f"a:{int(parts[4])}"
         else:
             raise ValueError("Неверная область проблемы")
         return await _prepare_preview(session, actor, dialog, scope)
@@ -839,6 +908,15 @@ async def _handle_action(session: AsyncSession, actor: User, payload: str) -> Ui
         data["_editing_description"] = True
         await update_dialog(dialog, step="description", data=data)
         return UiReply("Напишите исправленное описание:", [_button("Назад", "i:back")])
+    if payload == "i:issue:edit_summary":
+        dialog = await _dialog(session, actor, "issue_new", "attachments")
+        if dialog is None:
+            return _stale()
+        await update_dialog(dialog, step="edit_summary")
+        return UiReply(
+            "Напишите краткое формализованное описание проблемы (до 1500 символов):",
+            [_button("Назад", "i:back")],
+        )
     if payload == "i:issue:continue":
         dialog = await _dialog(session, actor, "issue_new", "review")
         if dialog is None:
@@ -1102,6 +1180,8 @@ async def _handle_text(
             data.pop("_editing_description", None)
             data["description"] = description
             data.pop("title", None)
+            data.pop("summary_description", None)
+            data.pop("_summary_fallback", None)
             await update_dialog(dialog, step="scope", data=data)
             return await _scope_options(session, actor, dialog)
         if dialog.step == "scope":
@@ -1131,6 +1211,31 @@ async def _handle_text(
             )
             data["draft_revision"] = saved.revision
             await update_dialog(dialog, step="review", data=data)
+            return _preview(dialog)
+        if dialog.step == "edit_summary":
+            summary = _summary_text(text)
+            if summary is None or len(summary) > 1500:
+                raise ValueError(
+                    "Краткое описание должно содержать от 1 до 1500 символов"
+                )
+            data = dict(dialog.data)
+            draft = await get_draft(session, actor, dialog.draft_id)
+            if draft.revision != data.get("draft_revision"):
+                raise ValueError(
+                    "Черновик изменился в другом окне. Откройте его заново"
+                )
+            saved = await save_draft(
+                session,
+                actor,
+                flow_kind="issue_card",
+                payload={**draft.payload, "summary_description": summary},
+                draft_id=draft.id,
+                revision=draft.revision,
+            )
+            data["summary_description"] = summary
+            data["_summary_fallback"] = False
+            data["draft_revision"] = saved.revision
+            await update_dialog(dialog, step="attachments", data=data)
             return _preview(dialog)
         if dialog.step in {"review", "attachments"}:
             return _preview(dialog)

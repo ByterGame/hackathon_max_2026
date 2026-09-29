@@ -66,7 +66,7 @@ class RevokeStaff(ActionPayload):
 
 class OfferResident(ActionPayload):
     house_id: UUID
-    entrance_number: int = Field(gt=0)
+    entrance_number: int | None = Field(default=None, gt=0)
     apartment_number: int = Field(gt=0)
     phone_number: str = Field(min_length=1, max_length=30)
     valid_to: datetime | None = None
@@ -120,6 +120,7 @@ class EditHouse(ActionPayload):
     house_id: UUID
     address_display: str = Field(min_length=1, max_length=500)
     entrance_count: int | None = Field(default=None, gt=0)
+    apartment_count: int | None = Field(default=None, gt=0)
 
 
 class EditUserName(ActionPayload):
@@ -128,7 +129,7 @@ class EditUserName(ActionPayload):
 
 
 class TargetApartment(ActionPayload):
-    entrance_number: int = Field(gt=0)
+    entrance_number: int | None = Field(default=None, gt=0)
     apartment_number: int = Field(gt=0)
 
 
@@ -171,6 +172,7 @@ class RequestDecision(ActionPayload):
     display_name: str | None = Field(default=None, max_length=255)
     proposed_address_key: str | None = Field(default=None, max_length=500)
     entrance_count: int | None = Field(default=None, gt=0)
+    apartment_count: int | None = Field(default=None, gt=0)
     valid_to: datetime | None = None
 
     @field_validator("valid_to")
@@ -293,11 +295,14 @@ async def _edit_house(session: AsyncSession, actor: User, body: EditHouse) -> Ho
         "address_display": row.address_display,
         "address_key": row.address_key,
         "entrance_count": row.entrance_count,
+        "apartment_count": row.apartment_count,
     }
     row.address_display = address
     row.address_key = key
     if "entrance_count" in body.model_fields_set:
         row.entrance_count = body.entrance_count
+    if "apartment_count" in body.model_fields_set:
+        row.apartment_count = body.apartment_count
     _audit_edit(
         session,
         actor,
@@ -308,6 +313,7 @@ async def _edit_house(session: AsyncSession, actor: User, body: EditHouse) -> Ho
             "address_display": row.address_display,
             "address_key": row.address_key,
             "entrance_count": row.entrance_count,
+            "apartment_count": row.apartment_count,
         },
     )
     await commit_or_conflict(session)
@@ -318,8 +324,21 @@ async def _edit_user_name(
     session: AsyncSession, actor: User, body: EditUserName
 ) -> User:
     row = await require_row(session, User, body.user_id, for_update=True)
-    before = {"full_name": row.full_name}
-    row.full_name = body.full_name.strip() or None if body.full_name else None
+    before = {
+        "full_name": row.full_name,
+        "full_name_is_manual": row.full_name_is_manual,
+        "full_name_confirmed_at": row.full_name_confirmed_at,
+    }
+    requested_name = body.full_name.strip() if body.full_name else ""
+    row.full_name_is_manual = bool(requested_name)
+    row.full_name = requested_name or row.max_display_name or (
+        f"@{row.max_username}" if row.max_username else None
+    )
+    if (
+        row.full_name != before["full_name"]
+        or row.full_name_is_manual != before["full_name_is_manual"]
+    ):
+        row.full_name_confirmed_at = None
     row.version += 1
     row.updated_at = utcnow()
     _audit_edit(
@@ -328,7 +347,11 @@ async def _edit_user_name(
         entity_kind="user",
         entity_id=row.id,
         before=before,
-        after={"full_name": row.full_name},
+        after={
+            "full_name": row.full_name,
+            "full_name_is_manual": row.full_name_is_manual,
+            "full_name_confirmed_at": row.full_name_confirmed_at,
+        },
     )
     await commit_or_conflict(session)
     return row
@@ -444,6 +467,7 @@ async def admin_action(
                 decision_note=body.decision_note,
                 proposed_address_key=body.proposed_address_key,
                 entrance_count=body.entrance_count,
+                apartment_count=body.apartment_count,
             )
         elif body.kind == "resident":
             row, _ = await decide_resident_request(

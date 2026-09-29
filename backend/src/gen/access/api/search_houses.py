@@ -9,6 +9,7 @@ class House(BaseModel):
     id: UUID
     address_display: str
     entrance_count: int | None = None
+    apartment_count: int | None = None
 
 
 class QueryParams(BaseModel):

@@ -17,6 +17,8 @@ class HouseApprovalTests(unittest.IsolatedAsyncioTestCase):
             company_id=company_id,
             registration_request_id=None,
             entered_address="Владивосток, Морская, 7",
+            entrance_count=2,
+            apartment_count=40,
             resolved_house_id=None,
             status="open",
             outcome=None,
@@ -57,6 +59,7 @@ class HouseApprovalTests(unittest.IsolatedAsyncioTestCase):
                 decision_note="Дом проверен",
                 proposed_address_key=None,
                 entrance_count=2,
+                apartment_count=40,
             )
 
         self.assertIs(closed, request)

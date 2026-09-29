@@ -166,22 +166,91 @@ def validate_bot_contact(
     return normalize_phone_number(numbers[0])
 
 
-async def get_or_create_user(
-    session: AsyncSession, max_user_id: str, *, full_name: str | None = None
+def max_profile_name(first_name: object, last_name: object) -> str | None:
+    """Build a display name from MAX's authenticated profile fields."""
+    parts = [
+        " ".join(part.split())
+        for part in (first_name, last_name)
+        if isinstance(part, str) and part.strip()
+    ]
+    return " ".join(parts)[:255] or None
+
+
+def _max_username(value: str | None) -> str | None:
+    if not isinstance(value, str):
+        return None
+    username = value.strip().removeprefix("@").strip()
+    if not username or any(character.isspace() for character in username):
+        return None
+    return username[:255]
+
+
+def _max_effective_name(name: str | None, username: str | None) -> str | None:
+    return name or (f"@{username}" if username else None)
+
+
+async def _sync_max_profile(
+    session: AsyncSession,
+    user: User,
+    *,
+    name: str | None,
+    username: str | None,
 ) -> User:
-    user = await session.scalar(select(User).where(User.max_user_id == max_user_id))
+    effective_name = _max_effective_name(name, username)
+    changed = user.max_display_name != name or user.max_username != username
+    if not user.full_name_is_manual and user.full_name != effective_name:
+        user.full_name = effective_name
+        changed = True
+    if changed:
+        user.max_display_name = name
+        user.max_username = username
+        user.version += 1
+        user.updated_at = datetime.now(UTC)
+        await session.commit()
+    return user
+
+
+async def get_or_create_user(
+    session: AsyncSession,
+    max_user_id: str,
+    *,
+    full_name: str | None = None,
+    max_username: str | None = None,
+) -> User:
+    name = " ".join(full_name.split())[:255] if isinstance(full_name, str) else None
+    name = name or None
+    username = _max_username(max_username)
+    user = await session.scalar(
+        select(User)
+        .where(User.max_user_id == max_user_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
     if user is not None:
-        return user
-    user = User(id=uuid4(), max_user_id=max_user_id, kind="unassigned", full_name=full_name)
+        return await _sync_max_profile(session, user, name=name, username=username)
+    user = User(
+        id=uuid4(),
+        max_user_id=max_user_id,
+        kind="unassigned",
+        full_name=_max_effective_name(name, username),
+        max_display_name=name,
+        max_username=username,
+        full_name_is_manual=False,
+    )
     session.add(user)
     try:
         await session.commit()
     except IntegrityError:
         await session.rollback()
-        existing = await session.scalar(select(User).where(User.max_user_id == max_user_id))
+        existing = await session.scalar(
+            select(User)
+            .where(User.max_user_id == max_user_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
         if existing is None:
             raise
-        return existing
+        return await _sync_max_profile(session, existing, name=name, username=username)
     return user
 
 
@@ -249,7 +318,10 @@ async def get_current_user(
         }.get(str(error), "invalid_max_launch_data")
         request.state.exception_message = safe_exception_message(error)
         raise HTTPException(status_code=401, detail=str(error)) from error
-    full_name = " ".join(
-        part for part in (profile.get("first_name"), profile.get("last_name")) if part
-    ) or None
-    return await get_or_create_user(session, str(profile["id"]), full_name=full_name)
+    full_name = max_profile_name(profile.get("first_name"), profile.get("last_name"))
+    return await get_or_create_user(
+        session,
+        str(profile["id"]),
+        full_name=full_name,
+        max_username=profile.get("username"),
+    )

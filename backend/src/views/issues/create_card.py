@@ -26,6 +26,7 @@ async def create_card(
             category_id=body.category_id,
             title=body.title,
             description=body.description,
+            summary_description=body.summary_description,
             scope_all_house=body.scope_all_house,
             target_entrances=body.target_entrances or [],
             target_apartments=[

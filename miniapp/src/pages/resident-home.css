@@ -1,0 +1,8 @@
+.my-houses { margin-bottom: 16px; }
+.my-houses__list { display: grid; gap: 10px; }
+.my-house-card { display: flex; align-items: center; width: 100%; gap: 12px; padding: 14px; text-align: left; cursor: pointer; border: 2px solid transparent; }
+.my-house-card--selected { border-color: #397be4; background: #f2f7ff; }
+.my-house-card__text { display: grid; flex: 1; min-width: 0; gap: 4px; }
+.my-house-card__text strong { overflow-wrap: anywhere; }
+.my-house-card__text small { color: #64748b; }
+.my-house-card__state { flex: none; font-size: 12px; font-weight: 700; color: #397be4; }

@@ -13,6 +13,7 @@ export interface CurrentUser {
   id: string;
   kind: "unassigned" | "resident" | "employee" | "support" | "admin";
   full_name: string | null;
+  full_name_confirmed: boolean;
   phone_number: string | null;
   phone_verified: boolean;
   staff_assignments: StaffMembership[];
@@ -20,6 +21,13 @@ export interface CurrentUser {
 
 export function getCurrentUser(): Promise<CurrentUser> {
   return requestJson<CurrentUser>("/auth/me");
+}
+
+export function updateProfileName(fullName: string): Promise<{ full_name: string; full_name_confirmed: boolean }> {
+  return requestJson("/auth/update_profile_name", {
+    method: "POST",
+    body: JSON.stringify({ full_name: fullName }),
+  });
 }
 
 export async function verifyPhoneWithMax(): Promise<CurrentUser> {

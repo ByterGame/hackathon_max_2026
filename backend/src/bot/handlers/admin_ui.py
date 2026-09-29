@@ -65,7 +65,7 @@ ACTION_TITLES = {
     "revoke_grant": "Отозвать доступ жильца",
     "edit_company": "Изменить УК",
     "edit_house": "Изменить дом",
-    "edit_user_name": "Изменить ФИО",
+    "edit_user_name": "Изменить отображаемое имя",
     "edit_issue": "Изменить карточку проблемы",
     "set_issue_status": "Изменить статус проблемы",
     "request_status": "Изменить статус заявки",
@@ -102,7 +102,6 @@ FORMS: dict[str, tuple[FormField, ...]] = {
     "revoke_staff": (FormField("assignment_id", "UUID назначения:", "uuid"),),
     "offer_resident": (
         FormField("house_id", "UUID дома:", "uuid"),
-        FormField("entrance_number", "Номер подъезда:", "int"),
         FormField("apartment_number", "Номер квартиры:", "int"),
         FormField("phone_number", "Номер жильца:", "phone"),
         FormField(
@@ -136,14 +135,20 @@ FORMS: dict[str, tuple[FormField, ...]] = {
         FormField("address_display", "Новый адрес дома:"),
         FormField(
             "entrance_count",
-            "Количество подъездов; «.» без изменения, «очистить» удалить:",
+            "Количество подъездов; «.» без изменения:",
+            "int",
+            True,
+        ),
+        FormField(
+            "apartment_count",
+            "Количество квартир; «.» без изменения:",
             "int",
             True,
         ),
     ),
     "edit_user_name": (
         FormField("user_id", "UUID пользователя:", "uuid"),
-        FormField("full_name", "Новое ФИО или «.» чтобы очистить:", optional=True),
+        FormField("full_name", "Отображаемое имя или «.» чтобы очистить:", optional=True),
     ),
     "edit_issue": (
         FormField("card_id", "UUID проблемы:", "uuid"),
@@ -162,7 +167,7 @@ FORMS: dict[str, tuple[FormField, ...]] = {
         ),
         FormField(
             "target_apartments",
-            'Квартиры как JSON-массив объектов, например [{"entrance_number":1,"apartment_number":2}] (или «.» оставить прежние):',
+            'Квартиры как JSON-массив объектов, например [{"apartment_number":2}] (или «.» оставить прежние):',
             "array",
         ),
     ),
@@ -214,7 +219,13 @@ FORMS: dict[str, tuple[FormField, ...]] = {
         ),
         FormField(
             "entrance_count",
-            "Для дома: число подъездов или «.» не указывать:",
+            "Для дома: число подъездов или «.» оставить из заявки:",
+            "int",
+            True,
+        ),
+        FormField(
+            "apartment_count",
+            "Для дома: число квартир или «.» оставить из заявки:",
             "int",
             True,
         ),
@@ -343,9 +354,11 @@ async def _list(
     lines = [f"{title} · {total} записей"]
     buttons: list[list[Button]] = []
     for i, row in enumerate(items, offset + 1):
-        lines.append(
-            f"{i}. {_short(row['title'], 80)} · {_short(row.get('status'), 20)}"
-        )
+        line = f"{i}. {_short(row['title'], 80)}"
+        if entity == "users" and row.get("subtitle") and row["subtitle"] != row["title"]:
+            line += f" · {_short(row['subtitle'], 30)}"
+        line += f" · {_short(row.get('status'), 20)}"
+        lines.append(line)
         buttons.append(
             [
                 Button(
@@ -607,7 +620,6 @@ async def _start_form(
                 ],
                 "target_apartments": [
                     {
-                        "entrance_number": item["apartment_entrance_number"],
                         "apartment_number": item["apartment_number"],
                     }
                     for item in targets
@@ -714,7 +726,7 @@ async def handle_action(
             data={"entity": entity},
         )
         return UiReply(
-            f"Что искать в разделе «{ENTITIES[entity]}»? Можно ввести UUID, имя, номер или адрес."
+            f"Что искать в разделе «{ENTITIES[entity]}»? Можно ввести UUID, имя, ник, номер или адрес."
         )
     if len(parts) == 5 and parts[1] == "get":
         return await _detail(

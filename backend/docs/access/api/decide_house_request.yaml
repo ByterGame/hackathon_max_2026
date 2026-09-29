@@ -33,6 +33,9 @@ schemas:
       entrance_count:
         type: integer
         minimum: 1
+      apartment_count:
+        type: integer
+        minimum: 1
   Response200:
     type: object
     required: [id, status]

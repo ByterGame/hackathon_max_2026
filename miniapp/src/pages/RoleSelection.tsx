@@ -21,7 +21,7 @@ export function RoleSelection({ onContinue, onRegister }: { onContinue: (role: R
         <div className="section-heading"><h3>Посмотреть как</h3><span className="demo-pill">Демо</span></div>
         <button type="button" className={`role-card ${role === "resident" ? "role-card--selected" : ""}`} onClick={() => setRole("resident")} aria-pressed={role === "resident"}>
           <span className="role-card__icon"><Icon name="home" size={29} /></span>
-          <span className="role-card__body"><strong>Житель</strong><small>Проблемы дома и ответы УК</small></span>
+          <span className="role-card__body"><strong>Жилец</strong><small>Проблемы дома и ответы УК</small></span>
           <span className="radio-dot" />
         </button>
         <button type="button" className={`role-card ${role === "employee" ? "role-card--selected" : ""}`} onClick={() => setRole("employee")} aria-pressed={role === "employee"}>
@@ -33,7 +33,7 @@ export function RoleSelection({ onContinue, onRegister }: { onContinue: (role: R
 
       <section className="welcome-access panel">
         <span className="small-icon small-icon--green"><Icon name="shield" size={20} /></span>
-        <div><strong>Доступ к дому</strong><p>В рабочем сервисе доступ жителю выдаёт УК после рассмотрения заявки. Доступ сотруднику выдаёт поддержка или уполномоченный коллега.</p></div>
+        <div><strong>Доступ к дому</strong><p>В рабочем сервисе доступ жильцу выдаёт УК после рассмотрения заявки. Доступ сотруднику выдаёт поддержка или уполномоченный коллега.</p></div>
       </section>
 
       <div className="welcome-actions">

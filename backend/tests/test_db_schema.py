@@ -3,7 +3,7 @@ import unittest
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.schema import CreateIndex
 
-from src.db.models import AdminOperation, Base, BotDialog, ResidentRequest, SupportInvitation, User
+from src.db.models import AdminOperation, Apartment, Base, BotDialog, ResidentRequest, SupportInvitation, User
 
 
 class DatabaseSchemaTests(unittest.TestCase):
@@ -28,12 +28,25 @@ class DatabaseSchemaTests(unittest.TestCase):
             [
                 "applicant_user_id",
                 "house_id",
-                "submitted_entrance_number",
                 "submitted_apartment_number",
             ],
         )
         sql = str(CreateIndex(index).compile(dialect=postgresql.dialect()))
         self.assertIn("WHERE status IN ('open', 'reviewing', 'needs_info')", sql)
+
+    def test_apartment_number_is_unique_within_house_even_without_entrance(self):
+        table = Apartment.__table__
+        self.assertTrue(table.c.entrance_number.nullable)
+        constraint = next(
+            constraint
+            for constraint in table.constraints
+            if constraint.name == "uq_apartment_location"
+        )
+        self.assertEqual(
+            [column.name for column in constraint.columns],
+            ["house_id", "apartment_number"],
+        )
+        self.assertTrue(ResidentRequest.__table__.c.submitted_entrance_number.nullable)
 
     def test_bot_dialog_tracks_one_flow_per_user(self):
         table = BotDialog.__table__
@@ -71,6 +84,11 @@ class DatabaseSchemaTests(unittest.TestCase):
             if constraint.name == "ck_users_user_kind"
         )
         self.assertIn("'admin'", str(kind_check.sqltext))
+
+    def test_explicit_name_confirmation_is_not_inferred_from_max_profile(self):
+        column = User.__table__.c.full_name_confirmed_at
+        self.assertTrue(column.nullable)
+        self.assertIsNone(column.server_default)
 
 
 if __name__ == "__main__":

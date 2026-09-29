@@ -10,11 +10,12 @@ responses:
 schemas:
   Response200:
     type: object
-    required: [id, kind, phone_verified, staff_assignments]
+    required: [id, kind, phone_verified, full_name_confirmed, staff_assignments]
     properties:
       id: {type: string, format: uuid}
       kind: {type: string}
       full_name: {type: string}
+      full_name_confirmed: {type: boolean}
       phone_number: {type: string}
       phone_verified: {type: boolean}
       staff_assignments:

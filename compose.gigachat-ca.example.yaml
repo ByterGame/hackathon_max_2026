@@ -1,0 +1,21 @@
+# Use with compose.yaml only when GigaChat needs an additional trusted CA.
+# GIGACHAT_CA_HOST_PATH is an absolute path to a PEM bundle on the Docker host.
+# Set GIGACHAT_CA_BUNDLE=/run/gigachat/ca-bundle.pem in .env.
+services:
+  app:
+    volumes:
+      - type: bind
+        source: ${GIGACHAT_CA_HOST_PATH:?Set GIGACHAT_CA_HOST_PATH to an absolute PEM path in .env}
+        target: /run/gigachat/ca-bundle.pem
+        read_only: true
+        bind:
+          create_host_path: false
+
+  bot:
+    volumes:
+      - type: bind
+        source: ${GIGACHAT_CA_HOST_PATH:?Set GIGACHAT_CA_HOST_PATH to an absolute PEM path in .env}
+        target: /run/gigachat/ca-bundle.pem
+        read_only: true
+        bind:
+          create_host_path: false

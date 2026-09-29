@@ -2,13 +2,16 @@
 
 from uuid import UUID
 
-from pydantic import BaseModel, conint, constr
+from pydantic import BaseModel, Field, conint, constr
 
 
 class Request(BaseModel):
     request_id: UUID
-    full_name: constr(min_length=1)
-    entrance_number: conint(ge=1)
+    full_name: constr(min_length=1, max_length=255) | None = Field(
+        None,
+        description='Устаревшее поле совместимости: если передано, должно совпадать с общим ФИО профиля; снимок ФИО в заявке здесь не меняется.',
+    )
+    entrance_number: conint(ge=1) | None = None
     apartment_number: conint(ge=1)
 
 

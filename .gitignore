@@ -150,6 +150,7 @@ activemq-data/
 # Environments
 .env
 .envrc
+compose.gigachat-ca.yaml
 .venv
 env/
 venv/

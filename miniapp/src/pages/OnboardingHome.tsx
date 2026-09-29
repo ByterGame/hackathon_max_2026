@@ -7,7 +7,7 @@ export function OnboardingHome({ requests, companyRequests, houseRequests, offer
   return (
     <div className="page page--onboarding">
       <ScreenHeader title="Подключить дом" subtitle="Доступ к обращениям" icon="home" />
-      <section className="panel onboarding-hero"><span className="small-icon"><Icon name="key" size={23} /></span><h2>Получите доступ к своему дому</h2><p>Найдите подключённый дом, укажите подъезд и квартиру. Заявку рассмотрит управляющая компания. До её решения проблемы дома недоступны.</p><button type="button" className="button button--primary button--wide" onClick={onAccess}>Подать заявку на доступ</button></section>
+      <section className="panel onboarding-hero"><span className="small-icon"><Icon name="key" size={23} /></span><h2>Получите доступ к своему дому</h2><p>Найдите подключённый дом и укажите номер квартиры. Заявку рассмотрит управляющая компания. До её решения проблемы дома недоступны.</p><button type="button" className="button button--primary button--wide" onClick={onAccess}>Подать заявку на доступ</button></section>
       {offers.some((item) => item.status === "pending") && <button className="request-hint" type="button" onClick={onAccess}><Icon name="bell" size={18} /> У вас есть предложение доступа от УК <Icon name="chevron" size={17} /></button>}
       <ApplicantRequestsList residentRequests={requests} companyRequests={companyRequests} houseRequests={houseRequests} onOpen={onRequest} limit={3} />
       {requests.length + companyRequests.length + houseRequests.length > 3 && <button type="button" className="text-link" onClick={onAllRequests}>Все заявки <Icon name="chevron" size={17} /></button>}

@@ -123,7 +123,7 @@ class JsonLogFormatterTests(unittest.TestCase):
             level=logging.WARNING,
             pathname=__file__,
             lineno=1,
-            msg="issue_suggestion_groq",
+            msg="issue_suggestion_gigachat",
             args=(),
             exc_info=None,
         )
@@ -189,6 +189,28 @@ class JsonLogFormatterTests(unittest.TestCase):
         with patch.dict("os.environ", {"BOT_TOKEN": "bot-token-secret"}):
             payload = json.loads(JsonLogFormatter().format(record))
         self.assertEqual(payload["message"], "upstream failed with token [REDACTED]")
+
+    def test_gigachat_basic_auth_and_configured_key_are_redacted(self) -> None:
+        key = "private-gigachat-auth-key"
+        with patch.dict("os.environ", {"GIGACHAT_AUTH_KEY": key}):
+            message = safe_exception_message(
+                ValueError(
+                    f"Authorization: Basic {key}; GIGACHAT_AUTH_KEY={key}; "
+                    f"provider echoed {key}"
+                )
+            )
+            record = logging.LogRecord(
+                name="third_party",
+                level=logging.WARNING,
+                pathname=__file__,
+                lineno=1,
+                msg=f"Basic {key}; provider echoed {key}",
+                args=(),
+                exc_info=None,
+            )
+            payload = json.loads(JsonLogFormatter().format(record))
+        self.assertNotIn(key, message)
+        self.assertNotIn(key, json.dumps(payload))
 
     def test_server_disables_raw_uvicorn_access_log(self) -> None:
         with (

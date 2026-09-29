@@ -17,7 +17,7 @@ class GrantItem(BaseModel):
     apartment_id: UUID
     house_id: UUID
     address_display: str
-    entrance_number: int
+    entrance_number: int | None
     apartment_number: int
     valid_from: AwareDatetime
     valid_to: AwareDatetime | None = None

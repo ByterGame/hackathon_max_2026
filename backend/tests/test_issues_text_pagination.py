@@ -24,6 +24,27 @@ class IssueTextPaginationTests(unittest.IsolatedAsyncioTestCase):
             all(len(chunk) <= issues_text.ISSUE_TEXT_PAGE_CHARS for chunk in chunks)
         )
 
+    async def test_suggest_command_labels_gigachat_response(self) -> None:
+        house_id = uuid4()
+        suggestion = SimpleNamespace(
+            suggested_title="Не работает лифт",
+            summary_description="Лифт в доме не реагирует на вызов.",
+            source="gigachat",
+            description_check="warning",
+            description_warning="Укажите номер подъезда.",
+            similar_card_ids=[],
+            candidates=[],
+        )
+        with patch.object(
+            issues_text, "suggest_issue", new=AsyncMock(return_value=suggestion)
+        ):
+            reply = await issues_text.handle_issue_text(
+                self.session, self.actor, f"/suggest {house_id} | - | Лифт сломан"
+            )
+        self.assertIn("GigaChat обработал описание", reply)
+        self.assertIn("Лифт в доме не реагирует на вызов", reply)
+        self.assertIn("Укажите номер подъезда", reply)
+
     async def test_issues_command_reaches_last_page_and_rechecks_access(self) -> None:
         house_id = uuid4()
         cards = [
@@ -152,7 +173,7 @@ class IssueTextPaginationTests(unittest.IsolatedAsyncioTestCase):
             issues_text._participant_label(self.actor.id, self.actor.id), "Вы"
         )
         self.assertEqual(
-            issues_text._participant_label(self.actor.id, another_user_id), "Житель"
+            issues_text._participant_label(self.actor.id, another_user_id), "Жилец"
         )
         self.assertEqual(
             issues_text._participant_label(

@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from pydantic import AwareDatetime, BaseModel
+from pydantic import AwareDatetime, BaseModel, constr
 
 
 class Category(BaseModel):
@@ -17,6 +17,7 @@ class Card(BaseModel):
     author_user_id: UUID
     category_id: UUID
     title: str
+    summary_description: constr(min_length=1, max_length=1500)
     status: str
     close_result: str | None = None
     current_note: str | None = None

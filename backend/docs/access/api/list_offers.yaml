@@ -33,7 +33,7 @@ schemas:
         type: string
         format: uuid
       entrance_number:
-        type: integer
+        type: [integer, 'null']
       apartment_number:
         type: integer
       status:

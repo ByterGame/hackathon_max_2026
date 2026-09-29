@@ -30,6 +30,7 @@ class House(Base):
     __tablename__ = "houses"
     __table_args__ = (
         CheckConstraint("entrance_count IS NULL OR entrance_count > 0", name="entrance_count_positive"),
+        CheckConstraint("apartment_count IS NULL OR apartment_count > 0", name="apartment_count_positive"),
         Index("ix_houses_company_id", "company_id"),
         {"schema": "housing"},
     )
@@ -39,6 +40,7 @@ class House(Base):
     address_display: Mapped[str] = mapped_column(Text, nullable=False)
     address_key: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     entrance_count: Mapped[int | None] = mapped_column(Integer)
+    apartment_count: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -46,13 +48,13 @@ class House(Base):
 class Apartment(Base):
     __tablename__ = "apartments"
     __table_args__ = (
-        UniqueConstraint("house_id", "entrance_number", "apartment_number", name="uq_apartment_location"),
-        CheckConstraint("entrance_number > 0", name="entrance_number_positive"),
+        UniqueConstraint("house_id", "apartment_number", name="uq_apartment_location"),
+        CheckConstraint("entrance_number IS NULL OR entrance_number > 0", name="entrance_number_positive"),
         CheckConstraint("apartment_number > 0", name="apartment_number_positive"),
         {"schema": "housing"},
     )
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
     house_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("housing.houses.id"))
-    entrance_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    entrance_number: Mapped[int | None] = mapped_column(Integer)
     apartment_number: Mapped[int] = mapped_column(Integer, nullable=False)

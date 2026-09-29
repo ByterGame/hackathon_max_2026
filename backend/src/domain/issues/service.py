@@ -39,6 +39,16 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+def _summary_description(value: str) -> str:
+    cleaned = value.strip()
+    if not 1 <= len(cleaned) <= 1500:
+        raise IssueError(
+            "invalid_summary_description",
+            "Сводное описание должно содержать от 1 до 1500 символов",
+        )
+    return cleaned
+
+
 def _record_issue_event(
     session: AsyncSession,
     actor: User,
@@ -105,7 +115,10 @@ async def _resident_locations(
             )
         )
     ).all()
-    return {row.id for row in rows}, {row.entrance_number for row in rows}
+    return (
+        {row.id for row in rows},
+        {row.entrance_number for row in rows if row.entrance_number is not None},
+    )
 
 
 async def _house(session: AsyncSession, house_id: UUID) -> House:
@@ -249,11 +262,17 @@ async def list_visible_cards(
 
 
 async def _get_or_create_apartment(
-    session: AsyncSession, house: House, entrance_number: int, apartment_number: int
+    session: AsyncSession, house: House, entrance_number: int | None, apartment_number: int
 ) -> UUID:
-    if entrance_number <= 0 or apartment_number <= 0:
-        raise IssueError("invalid_target", "Номера подъезда и квартиры должны быть положительными")
-    if house.entrance_count is not None and entrance_number > house.entrance_count:
+    if apartment_number <= 0 or (entrance_number is not None and entrance_number <= 0):
+        raise IssueError(
+            "invalid_target", "Номер квартиры и указанный номер подъезда должны быть положительными"
+        )
+    if (
+        entrance_number is not None
+        and house.entrance_count is not None
+        and entrance_number > house.entrance_count
+    ):
         raise IssueError("invalid_target", "В доме нет такого подъезда")
     proposed_id = uuid4()
     statement = (
@@ -261,13 +280,14 @@ async def _get_or_create_apartment(
         .values(
             id=proposed_id,
             house_id=house.id,
-            entrance_number=entrance_number,
+            # A resident's issue must not assign an entrance to an apartment:
+            # that would grant visibility of entrance-scoped issues later.
+            entrance_number=None,
             apartment_number=apartment_number,
         )
         .on_conflict_do_nothing(
             index_elements=[
                 Apartment.house_id,
-                Apartment.entrance_number,
                 Apartment.apartment_number,
             ]
         )
@@ -276,16 +296,25 @@ async def _get_or_create_apartment(
     inserted_id = await session.scalar(statement)
     if inserted_id is not None:
         return inserted_id
-    existing_id = await session.scalar(
-        select(Apartment.id).where(
-            Apartment.house_id == house.id,
-            Apartment.entrance_number == entrance_number,
-            Apartment.apartment_number == apartment_number,
+    existing = (
+        await session.execute(
+            select(Apartment.id, Apartment.entrance_number).where(
+                Apartment.house_id == house.id,
+                Apartment.apartment_number == apartment_number,
+            )
         )
-    )
-    if existing_id is None:
+    ).first()
+    if existing is None:
         raise IssueError("apartment_conflict", "Не удалось определить квартиру", 409)
-    return existing_id
+    if (
+        entrance_number is not None
+        and existing.entrance_number is not None
+        and existing.entrance_number != entrance_number
+    ):
+        raise IssueError(
+            "apartment_entrance_conflict", "Квартира уже указана в другом подъезде", 409
+        )
+    return existing.id
 
 
 async def create_card(
@@ -298,7 +327,8 @@ async def create_card(
     description: str,
     scope_all_house: bool,
     target_entrances: list[int],
-    target_apartments: list[tuple[int, int]],
+    target_apartments: list[tuple[int | None, int]],
+    summary_description: str | None = None,
 ) -> IssueCard:
     house = await _house(session, house_id)
     apartments, _ = await _resident_locations(session, actor, house)
@@ -311,6 +341,11 @@ async def create_card(
     description = description.strip()
     if not title or not description:
         raise IssueError("empty_issue", "Нужны краткая формулировка и описание")
+    summary = (
+        _summary_description(summary_description)
+        if summary_description is not None
+        else " ".join(description.split())[:1500]
+    )
     if scope_all_house and (target_entrances or target_apartments):
         raise IssueError("invalid_scope", "Для всего дома отдельные цели не указываются")
     if not scope_all_house and not (target_entrances or target_apartments):
@@ -322,6 +357,7 @@ async def create_card(
         author_user_id=actor.id,
         category_id=category.id,
         title=title,
+        summary_description=summary,
         status="open",
         scope_all_house=scope_all_house,
         created_at=now,
@@ -380,7 +416,8 @@ async def edit_card(
     title: str,
     scope_all_house: bool,
     target_entrances: list[int],
-    target_apartments: list[tuple[int, int]],
+    target_apartments: list[tuple[int | None, int]],
+    summary_description: str | None = None,
 ) -> IssueCard:
     """Edit only the shared summary; immutable resident reports remain untouched."""
     card = await _lock_issue_house(session, card_id)
@@ -396,12 +433,18 @@ async def edit_card(
     cleaned_title = title.strip()
     if not cleaned_title:
         raise IssueError("empty_title", "Нужно название проблемы")
+    cleaned_summary = (
+        _summary_description(summary_description)
+        if summary_description is not None
+        else card.summary_description
+    )
     if scope_all_house and (target_entrances or target_apartments):
         raise IssueError("invalid_scope", "Для всего дома отдельные цели не указываются")
     if not scope_all_house and not (target_entrances or target_apartments):
         raise IssueError("invalid_scope", "Укажите квартиру, подъезд или весь дом")
     old_summary = {
         "title": card.title,
+        "summary_description": card.summary_description,
         "category_id": str(card.category_id),
         "scope_all_house": card.scope_all_house,
     }
@@ -445,6 +488,7 @@ async def edit_card(
         )
         new_targets.append({"entrance_number": None, "apartment_id": str(apartment_id)})
     card.title = cleaned_title
+    card.summary_description = cleaned_summary
     card.category_id = category.id
     card.scope_all_house = scope_all_house
     card.updated_at = _now()
@@ -457,6 +501,7 @@ async def edit_card(
         before=old_summary,
         after={
             "title": card.title,
+            "summary_description": card.summary_description,
             "category_id": str(card.category_id),
             "scope_all_house": card.scope_all_house,
             "targets": new_targets,
@@ -689,6 +734,7 @@ async def merge_cards(
         "primary": {
             "id": str(primary.id),
             "title": primary.title,
+            "summary_description": primary.summary_description,
             "status": primary.status,
             "note": primary.current_note,
             "scope_all_house": primary.scope_all_house,
@@ -696,6 +742,7 @@ async def merge_cards(
         "source": {
             "id": str(source.id),
             "title": source.title,
+            "summary_description": source.summary_description,
             "status": source.status,
             "note": source.current_note,
             "scope_all_house": source.scope_all_house,
@@ -790,6 +837,7 @@ async def merge_cards(
         after={
             "source_card_id": str(source.id),
             "title": primary.title,
+            "summary_description": primary.summary_description,
             "status": final_status,
             "note": primary.current_note,
             "scope_all_house": primary.scope_all_house,

@@ -8,13 +8,14 @@ schemas:
       name: {type: string}
   Card:
     type: object
-    required: [id, house_id, author_user_id, category_id, title, status, scope_all_house, support_count, version, created_at, updated_at]
+    required: [id, house_id, author_user_id, category_id, title, summary_description, status, scope_all_house, support_count, version, created_at, updated_at]
     properties:
       id: {type: string, format: uuid}
       house_id: {type: string, format: uuid}
       author_user_id: {type: string, format: uuid}
       category_id: {type: string, format: uuid}
       title: {type: string}
+      summary_description: {type: string, minLength: 1, maxLength: 1500}
       status: {type: string}
       close_result: {type: string}
       current_note: {type: string}

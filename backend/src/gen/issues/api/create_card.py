@@ -2,13 +2,13 @@
 
 from uuid import UUID
 
-from pydantic import BaseModel, conint, constr
+from pydantic import BaseModel, Field, conint, constr
 
 from src.gen.issues.internal.issue_data import Card
 
 
 class TargetApartment(BaseModel):
-    entrance_number: conint(ge=1)
+    entrance_number: conint(ge=1) | None = None
     apartment_number: conint(ge=1)
 
 
@@ -17,6 +17,10 @@ class Request(BaseModel):
     category_id: UUID
     title: constr(min_length=1)
     description: constr(min_length=1)
+    summary_description: constr(min_length=1, max_length=1500) | None = Field(
+        None,
+        description='Сводное описание общей карточки. Если отсутствует, берётся исходное описание жителя.',
+    )
     scope_all_house: bool
     target_entrances: list[conint(ge=1)] | None = None
     target_apartments: list[TargetApartment] | None = None

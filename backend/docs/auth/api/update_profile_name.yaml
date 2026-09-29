@@ -1,0 +1,27 @@
+path: /auth/update_profile_name
+method: post
+summary: Явно подтвердить или изменить ФИО общего профиля
+description: "ФИО применяется ко всем новым заявкам на доступ. В незакрытых заявках ФИО обновится; закрытые и отменённые сохраняют исторический снимок."
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema: {$ref: '#/schemas/Request'}
+responses:
+  '200':
+    description: ФИО подтверждено в общем профиле.
+    content:
+      application/json:
+        schema: {$ref: '#/schemas/Response200'}
+schemas:
+  Request:
+    type: object
+    required: [full_name]
+    properties:
+      full_name: {type: string, minLength: 1, maxLength: 255}
+  Response200:
+    type: object
+    required: [full_name, full_name_confirmed]
+    properties:
+      full_name: {type: string}
+      full_name_confirmed: {type: boolean}

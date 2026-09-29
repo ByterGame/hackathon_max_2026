@@ -65,7 +65,6 @@ export function AdminAddAccess({ busy, onAction }: { busy: boolean; onAction: Ru
   const [phone, setPhone] = useState("");
   const [companyId, setCompanyId] = useState("");
   const [houseId, setHouseId] = useState("");
-  const [entrance, setEntrance] = useState("");
   const [apartment, setApartment] = useState("");
   const [validTo, setValidTo] = useState("");
   const [staffRights, setStaffRights] = useState({ can_manage_staff: false, can_manage_residents: false, can_manage_issues: false });
@@ -78,15 +77,15 @@ export function AdminAddAccess({ busy, onAction }: { busy: boolean; onAction: Ru
     } else if (kind === "staff") {
       success = await onAction("assign_staff", { company_id: companyId, phone_number: phone, ...staffRights }, "Назначение сотрудника сохранено.");
     } else {
-      success = await onAction("offer_resident", { house_id: houseId, phone_number: phone, entrance_number: Number(entrance), apartment_number: Number(apartment), valid_to: toIso(validTo) }, "Предложение доступа жителю создано. Доступ появится после принятия.");
+      success = await onAction("offer_resident", { house_id: houseId, phone_number: phone, apartment_number: Number(apartment), valid_to: toIso(validTo) }, "Предложение доступа жильцу создано. Доступ появится после принятия.");
     }
-    if (success) { setPhone(""); setEntrance(""); setApartment(""); setValidTo(""); }
+    if (success) { setPhone(""); setApartment(""); setValidTo(""); }
   }
 
   return <details className="panel admin-create">
-    <summary><span>Добавить по номеру</span><small>Оператор, сотрудник УК или житель</small></summary>
+    <summary><span>Добавить по номеру</span><small>Оператор, сотрудник УК или жилец</small></summary>
     <form className="form-stack" onSubmit={(event) => void submit(event)}>
-      <label className="field"><span>Кому выдать доступ</span><select value={kind} onChange={(event) => setKind(event.target.value as typeof kind)}><option value="support">Оператор поддержки</option><option value="staff">Сотрудник УК</option><option value="resident">Житель дома</option></select></label>
+      <label className="field"><span>Кому выдать доступ</span><select value={kind} onChange={(event) => setKind(event.target.value as typeof kind)}><option value="support">Оператор поддержки</option><option value="staff">Сотрудник УК</option><option value="resident">Жилец дома</option></select></label>
       <label className="field"><span>Номер телефона</span><input type="tel" required value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="+7 999 123-45-67" autoComplete="tel" /></label>
       {kind === "support" && <p className="field-help">Оператор получит права только после входа с подтверждённым номером и принятия приглашения. Администратором он не станет.</p>}
       {kind === "staff" && <>
@@ -95,9 +94,9 @@ export function AdminAddAccess({ busy, onAction }: { busy: boolean; onAction: Ru
       </>}
       {kind === "resident" && <>
         <AdminReferencePicker entity="houses" value={houseId} onChange={setHouseId} />
-        <div className="field-grid"><label className="field"><span>Подъезд</span><input type="number" min="1" required value={entrance} onChange={(event) => setEntrance(event.target.value)} /></label><label className="field"><span>Квартира</span><input type="number" min="1" required value={apartment} onChange={(event) => setApartment(event.target.value)} /></label></div>
+        <label className="field"><span>Квартира</span><input type="number" min="1" required value={apartment} onChange={(event) => setApartment(event.target.value)} /></label>
         <label className="field"><span>Доступ до (необязательно)</span><input type="datetime-local" value={validTo} onChange={(event) => setValidTo(event.target.value)} /></label>
-        <p className="field-help">Житель сам примет предложение после входа с подтверждённого номера.</p>
+        <p className="field-help">Жилец сам примет предложение после входа с подтверждённого номера.</p>
       </>}
       <button type="submit" className="button button--primary" disabled={busy || (kind === "staff" && !companyId) || (kind === "resident" && !houseId)}>{busy ? "Сохраняем…" : kind === "support" ? "Пригласить оператора" : kind === "staff" ? "Назначить сотрудника" : "Предложить доступ"}</button>
     </form>
@@ -120,10 +119,11 @@ function CompanyActions({ item, busy, onAction }: { item: Record<string, unknown
 function HouseActions({ item, busy, onAction }: { item: Record<string, unknown>; busy: boolean; onAction: RunAction }) {
   const [address, setAddress] = useState(text(item, "address_display"));
   const [entrances, setEntrances] = useState(text(item, "entrance_count"));
-  return <details className="admin-action"><summary>Изменить дом</summary><form className="form-stack" onSubmit={(event) => { event.preventDefault(); void onAction("edit_house", { house_id: item.id, address_display: address.trim(), entrance_count: entrances ? Number(entrances) : null }, "Данные дома обновлены."); }}>
+  const [apartments, setApartments] = useState(text(item, "apartment_count"));
+  return <details className="admin-action"><summary>Изменить дом</summary><form className="form-stack" onSubmit={(event) => { event.preventDefault(); void onAction("edit_house", { house_id: item.id, address_display: address.trim(), entrance_count: Number(entrances), apartment_count: Number(apartments) }, "Данные дома обновлены."); }}>
     <label className="field"><span>Адрес</span><input required value={address} onChange={(event) => setAddress(event.target.value)} /></label>
-    <label className="field"><span>Подъездов (необязательно)</span><input type="number" min="1" value={entrances} onChange={(event) => setEntrances(event.target.value)} /></label>
-    <button type="submit" className="button button--primary" disabled={busy || !address.trim()}>Сохранить дом</button>
+    <div className="field-grid"><label className="field"><span>Количество подъездов</span><input required type="number" min="1" value={entrances} onChange={(event) => setEntrances(event.target.value)} /></label><label className="field"><span>Количество квартир</span><input required type="number" min="1" value={apartments} onChange={(event) => setApartments(event.target.value)} /></label></div>
+    <button type="submit" className="button button--primary" disabled={busy || !address.trim() || !Number.isSafeInteger(Number(entrances)) || Number(entrances) < 1 || !Number.isSafeInteger(Number(apartments)) || Number(apartments) < 1}>Сохранить дом</button>
   </form></details>;
 }
 
@@ -134,7 +134,7 @@ function IssueActions({ item, busy, categories, onAction }: { item: Record<strin
   const [allHouse, setAllHouse] = useState(Boolean(item.scope_all_house));
   const targets = Array.isArray(item.targets) ? item.targets as Record<string, unknown>[] : [];
   const [entrances, setEntrances] = useState(targets.filter((value) => value.entrance_number !== null && value.entrance_number !== undefined).map((value) => String(value.entrance_number)).join(", "));
-  const [apartments, setApartments] = useState(targets.filter((value) => value.apartment_number !== null && value.apartment_number !== undefined).map((value) => `${value.apartment_entrance_number}:${value.apartment_number}`).join("\n"));
+  const [apartments, setApartments] = useState(targets.filter((value) => value.apartment_number !== null && value.apartment_number !== undefined).map((value) => String(value.apartment_number)).join("\n"));
   const [scopeError, setScopeError] = useState("");
   const [status, setStatus] = useState(text(item, "status") || "open");
   const [note, setNote] = useState(text(item, "current_note"));
@@ -144,11 +144,11 @@ function IssueActions({ item, busy, categories, onAction }: { item: Record<strin
   async function edit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setScopeError("");
     const entranceNumbers = entrances.trim() ? entrances.split(/[,\s]+/).map(Number) : [];
-    const apartmentNumbers = apartments.trim() ? apartments.trim().split(/\n+/).map((line) => line.trim().split(/[:,;\s]+/).map(Number)) : [];
-    if (!allHouse && (entranceNumbers.some((value) => !Number.isInteger(value) || value < 1) || apartmentNumbers.some((pair) => pair.length !== 2 || pair.some((value) => !Number.isInteger(value) || value < 1)))) {
-      setScopeError("Укажите подъезды числами через запятую, а квартиры строками в формате «подъезд:квартира»."); return;
+    const apartmentNumbers = apartments.trim() ? apartments.trim().split(/[\n,;]+/).map((part) => Number(part.trim())) : [];
+    if (!allHouse && (entranceNumbers.some((value) => !Number.isInteger(value) || value < 1) || apartmentNumbers.some((value) => !Number.isInteger(value) || value < 1))) {
+      setScopeError("Укажите номера подъездов через запятую, а номера квартир — по одному в строке."); return;
     }
-    await onAction("edit_issue", { card_id: item.id, expected_version: integer(item, "version"), category_id: categoryId, title: title.trim(), scope_all_house: allHouse, target_entrances: allHouse ? [] : entranceNumbers, target_apartments: allHouse ? [] : apartmentNumbers.map(([entrance_number, apartment_number]) => ({ entrance_number, apartment_number })) }, "Карточка проблемы обновлена.");
+    await onAction("edit_issue", { card_id: item.id, expected_version: integer(item, "version"), category_id: categoryId, title: title.trim(), scope_all_house: allHouse, target_entrances: allHouse ? [] : entranceNumbers, target_apartments: allHouse ? [] : apartmentNumbers.map((apartment_number) => ({ apartment_number })) }, "Карточка проблемы обновлена.");
   }
 
   return <>
@@ -156,7 +156,7 @@ function IssueActions({ item, busy, categories, onAction }: { item: Record<strin
       <label className="field"><span>Заголовок</span><input required value={title} onChange={(event) => setTitle(event.target.value)} /></label>
       <label className="field"><span>Категория</span><select required value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>{selectedCategoryMissing && <option value={categoryId}>{categoryId}</option>}{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
       <label className="checkbox-row"><input type="checkbox" checked={allHouse} onChange={(event) => setAllHouse(event.target.checked)} /><span>Затронут весь дом</span></label>
-      {!allHouse && <><label className="field"><span>Подъезды через запятую</span><input value={entrances} onChange={(event) => setEntrances(event.target.value)} placeholder="1, 2" /></label><label className="field"><span>Квартиры, каждая отдельной строкой</span><textarea value={apartments} onChange={(event) => setApartments(event.target.value)} placeholder={"2:15\n3:42"} /></label></>}
+      {!allHouse && <><label className="field"><span>Подъезды через запятую</span><input value={entrances} onChange={(event) => setEntrances(event.target.value)} placeholder="1, 2" /></label><label className="field"><span>Квартиры, каждая отдельной строкой</span><textarea value={apartments} onChange={(event) => setApartments(event.target.value)} placeholder={"15\n42"} /></label></>}
       {scopeError && <p className="form-error" role="alert">{scopeError}</p>}
       <button type="submit" className="button button--primary" disabled={busy || !title.trim() || !categoryId}>Сохранить карточку</button>
     </form></details>
@@ -178,7 +178,8 @@ function RequestActions({ item, busy, onAction }: { item: Record<string, unknown
   const [note, setNote] = useState("");
   const [displayName, setDisplayName] = useState(text(item, "proposed_company_name"));
   const [addressKey, setAddressKey] = useState("");
-  const [entranceCount, setEntranceCount] = useState("");
+  const [entranceCount, setEntranceCount] = useState(text(item, "entrance_count"));
+  const [apartmentCount, setApartmentCount] = useState(text(item, "apartment_count"));
   const [validTo, setValidTo] = useState("");
   const [message, setMessage] = useState("");
   if (!requestId || !["company_registration", "house_addition", "resident"].includes(kind)) return <p className="muted-text">Тип заявки не определён; действие недоступно.</p>;
@@ -190,13 +191,13 @@ function RequestActions({ item, busy, onAction }: { item: Record<string, unknown
       <label className="field"><span>Статус</span><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="open">Открыта</option><option value="reviewing">На рассмотрении</option><option value="needs_info">Нужны уточнения</option></select></label>
       <button type="submit" className="button button--primary" disabled={busy || status === item.status}>Сохранить статус</button>
     </form></details>
-    <details className="admin-action"><summary>Решение по заявке</summary><form className="form-stack" onSubmit={(event) => { event.preventDefault(); void onAction("request_decision", { kind, request_id: requestId, outcome, decision_note: note.trim(), ...(kind === "company_registration" ? { display_name: optional(displayName) } : {}), ...(kind === "house_addition" ? { proposed_address_key: optional(addressKey), entrance_count: entranceCount ? Number(entranceCount) : null } : {}), ...(kind === "resident" ? { valid_to: toIso(validTo) } : {}) }, "Решение по заявке сохранено."); }}>
+    <details className="admin-action"><summary>Решение по заявке</summary><form className="form-stack" onSubmit={(event) => { event.preventDefault(); void onAction("request_decision", { kind, request_id: requestId, outcome, decision_note: note.trim(), ...(kind === "company_registration" ? { display_name: optional(displayName) } : {}), ...(kind === "house_addition" ? { proposed_address_key: optional(addressKey), entrance_count: outcome === "approved" ? Number(entranceCount) : null, apartment_count: outcome === "approved" ? Number(apartmentCount) : null } : {}), ...(kind === "resident" ? { valid_to: toIso(validTo) } : {}) }, "Решение по заявке сохранено."); }}>
       <label className="field"><span>Решение</span><select value={outcome} onChange={(event) => setOutcome(event.target.value)}>{kind === "resident" ? <><option value="granted">Выдать доступ</option><option value="denied">Отказать</option></> : <><option value="approved">Одобрить</option><option value="rejected">Отказать</option></>}</select></label>
       {kind === "company_registration" && outcome === "approved" && <label className="field"><span>Название УК</span><input required value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></label>}
-      {kind === "house_addition" && outcome === "approved" && <><label className="field"><span>Нормализованный адрес (необязательно)</span><input value={addressKey} onChange={(event) => setAddressKey(event.target.value)} placeholder="Если пусто, используется адрес заявки" /></label><label className="field"><span>Количество подъездов</span><input type="number" min="1" value={entranceCount} onChange={(event) => setEntranceCount(event.target.value)} /></label></>}
+      {kind === "house_addition" && outcome === "approved" && <><label className="field"><span>Нормализованный адрес (необязательно)</span><input value={addressKey} onChange={(event) => setAddressKey(event.target.value)} placeholder="Если пусто, используется адрес заявки" /></label><div className="field-grid"><label className="field"><span>Количество подъездов</span><input required type="number" min="1" value={entranceCount} onChange={(event) => setEntranceCount(event.target.value)} /></label><label className="field"><span>Количество квартир</span><input required type="number" min="1" value={apartmentCount} onChange={(event) => setApartmentCount(event.target.value)} /></label></div></>}
       {kind === "resident" && outcome === "granted" && <label className="field"><span>Доступ до (необязательно)</span><input type="datetime-local" value={validTo} onChange={(event) => setValidTo(event.target.value)} /></label>}
       <label className="field"><span>Пояснение · обязательно</span><textarea required value={note} onChange={(event) => setNote(event.target.value)} placeholder="Почему принято это решение" /></label>
-      <button type="submit" className="button button--primary" disabled={busy || !note.trim() || (kind === "company_registration" && outcome === "approved" && !displayName.trim())}>Сохранить решение</button>
+      <button type="submit" className="button button--primary" disabled={busy || !note.trim() || (kind === "company_registration" && outcome === "approved" && !displayName.trim()) || (kind === "house_addition" && outcome === "approved" && (!Number.isSafeInteger(Number(entranceCount)) || Number(entranceCount) < 1 || !Number.isSafeInteger(Number(apartmentCount)) || Number(apartmentCount) < 1))}>Сохранить решение</button>
     </form></details>
     </>}
     {item.status !== "cancelled" && <details className="admin-action"><summary>Написать в обсуждение заявки</summary><form className="form-stack" onSubmit={(event) => { event.preventDefault(); void onAction("add_access_message", { kind, request_id: requestId, text: message.trim() }, "Сообщение добавлено в обсуждение.").then((okay) => { if (okay) setMessage(""); }); }}><label className="field"><span>Текст сообщения</span><textarea required value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Ответ от администратора проекта" /></label><button type="submit" className="button button--primary" disabled={busy || !message.trim()}>Отправить</button></form></details>}
@@ -210,7 +211,18 @@ function RevokeAction({ label, confirmation, busy, action, payload, success, onA
 
 function UserNameAction({ item, busy, onAction }: { item: Record<string, unknown>; busy: boolean; onAction: RunAction }) {
   const [fullName, setFullName] = useState(text(item, "full_name"));
-  return <details className="admin-action"><summary>Изменить ФИО</summary><form className="form-stack" onSubmit={(event) => { event.preventDefault(); void onAction("edit_user_name", { user_id: item.id, full_name: optional(fullName) }, "Имя пользователя обновлено."); }}><label className="field"><span>ФИО</span><input value={fullName} onChange={(event) => setFullName(event.target.value)} placeholder="Можно оставить пустым" /></label><button type="submit" className="button button--primary" disabled={busy}>Сохранить</button></form></details>;
+  const hasMaxName = Boolean(text(item, "max_display_name") || text(item, "max_username"));
+  return <div className="admin-action">
+    <strong>Имя в списке людей</strong>
+    <p className="field-help">Можно указать имя или псевдоним. Номер телефона останется под ним и не изменится.</p>
+    <form className="form-stack" onSubmit={(event) => { event.preventDefault(); void onAction("edit_user_name", { user_id: item.id, full_name: optional(fullName) }, "Имя пользователя обновлено."); }}>
+      <label className="field"><span>Имя для отображения</span><input maxLength={255} value={fullName} onChange={(event) => setFullName(event.target.value)} placeholder="Как показывать этого человека" /></label>
+      <div className="button-row">
+        <button type="submit" className="button button--primary" disabled={busy || fullName.trim() === text(item, "full_name").trim()}>Сохранить имя</button>
+        {item.full_name_is_manual === true && <button type="button" className="button button--soft" disabled={busy} onClick={() => void onAction("edit_user_name", { user_id: item.id, full_name: null }, "Ручное имя сброшено.")}>{hasMaxName ? "Использовать имя из MAX" : "Сбросить ручное имя"}</button>}
+      </div>
+    </form>
+  </div>;
 }
 
 function FileAction({ item }: { item: Record<string, unknown> }) {
@@ -229,7 +241,7 @@ function FileAction({ item }: { item: Record<string, unknown> }) {
 function GrantRevokeAction({ id, busy, onAction }: { id: string; busy: boolean; onAction: RunAction }) {
   const [reason, setReason] = useState("");
   const [confirmed, setConfirmed] = useState(false);
-  return <details className="admin-action admin-action--danger"><summary>Отозвать доступ жителя</summary><div className="form-stack"><p className="muted-text">Житель потеряет доступ к дому. История доступа сохранится.</p><label className="field"><span>Причина</span><textarea required value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Почему доступ отзывается" /></label><label className="checkbox-row"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /><span>Подтверждаю отзыв доступа</span></label><button type="button" className="button button--soft" disabled={busy || !confirmed || !reason.trim()} onClick={() => void onAction("revoke_grant", { grant_id: id, reason: reason.trim() }, "Доступ жителя отозван.").then((okay) => { if (okay) { setReason(""); setConfirmed(false); } })}>Отозвать доступ</button></div></details>;
+  return <details className="admin-action admin-action--danger"><summary>Отозвать доступ жильца</summary><div className="form-stack"><p className="muted-text">Жилец потеряет доступ к дому. История доступа сохранится.</p><label className="field"><span>Причина</span><textarea required value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Почему доступ отзывается" /></label><label className="checkbox-row"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /><span>Подтверждаю отзыв доступа</span></label><button type="button" className="button button--soft" disabled={busy || !confirmed || !reason.trim()} onClick={() => void onAction("revoke_grant", { grant_id: id, reason: reason.trim() }, "Доступ жильца отозван.").then((okay) => { if (okay) { setReason(""); setConfirmed(false); } })}>Отозвать доступ</button></div></details>;
 }
 
 export function AdminItemActions({ entity, item, busy, categories, onAction, onOpenIssue }: { entity: AdminEntity; item: Record<string, unknown>; busy: boolean; categories: AdminIssueCategory[]; onAction: RunAction; onOpenIssue: (id: string) => void }) {

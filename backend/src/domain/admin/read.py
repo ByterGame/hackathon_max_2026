@@ -116,7 +116,7 @@ def _summary(
         data["kind"] = kind
     elif entity == "users":
         title = row.full_name or row.phone_number or row.max_user_id or str(row.id)
-        subtitle = row.phone_number
+        subtitle = row.phone_number or (f"MAX ID: {row.max_user_id}" if row.max_user_id else None)
         status = row.kind
     elif entity == "companies":
         title, subtitle = row.display_name, row.inn
@@ -128,7 +128,9 @@ def _summary(
         title, subtitle = row.title, str(row.house_id)
         status = "merged" if row.merged_into_id is not None else row.status
     elif entity == "apartments":
-        title = f"Подъезд {row.entrance_number}, квартира {row.apartment_number}"
+        title = f"Квартира {row.apartment_number}"
+        if row.entrance_number is not None:
+            title += f", подъезд {row.entrance_number}"
         subtitle, status = str(row.house_id), None
     elif entity == "staff":
         title, subtitle = row.phone_number, str(row.company_id)
@@ -167,7 +169,7 @@ def _search_clause(entity: str, model: type[Any], text: str) -> Any:
     escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     term = f"%{escaped}%"
     fields: dict[str, tuple[str, ...]] = {
-        "users": ("full_name", "phone_number", "max_user_id"),
+        "users": ("full_name", "max_username", "phone_number", "max_user_id"),
         "companies": ("display_name", "legal_name", "inn", "ogrn"),
         "houses": ("address_display", "address_key"),
         "issues": ("title", "current_note"),

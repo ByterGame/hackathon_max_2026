@@ -523,6 +523,25 @@ paths:
       operationId: access_search_houses
       tags:
       - access
+  /access/update_house_details:
+    post:
+      summary: Поддержка исправляет количество подъездов и квартир подключённого дома
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/gen.access.api.update_house_details.Request'
+      responses:
+        '200':
+          description: Данные дома обновлены.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.access.api.update_house_details.Response200'
+      operationId: access_update_house_details
+      tags:
+      - access
   /access/update_resident_request:
     post:
       summary: Исправить заявку жителя
@@ -553,6 +572,27 @@ paths:
               schema:
                 $ref: '#/components/schemas/gen.auth.api.me.Response200'
       operationId: auth_me
+      tags:
+      - auth
+  /auth/update_profile_name:
+    post:
+      summary: Явно подтвердить или изменить ФИО общего профиля
+      description: ФИО применяется ко всем новым заявкам на доступ. В незакрытых заявках
+        ФИО обновится; закрытые и отменённые сохраняют исторический снимок.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/gen.auth.api.update_profile_name.Request'
+      responses:
+        '200':
+          description: ФИО подтверждено в общем профиле.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.auth.api.update_profile_name.Response200'
+      operationId: auth_update_profile_name
       tags:
       - auth
   /auth/verify_contact:
@@ -860,7 +900,7 @@ paths:
       - issues
   /issues/suggest:
     post:
-      summary: Предложить краткое название проблемы и похожие открытые карточки
+      summary: Предложить название, сводное описание и похожие открытые карточки
       requestBody:
         required: true
         content:
@@ -1073,6 +1113,7 @@ components:
       - author_user_id
       - category_id
       - title
+      - summary_description
       - status
       - scope_all_house
       - support_count
@@ -1094,6 +1135,10 @@ components:
           format: uuid
         title:
           type: string
+        summary_description:
+          type: string
+          minLength: 1
+          maxLength: 1500
         status:
           type: string
         close_result:
@@ -1366,6 +1411,8 @@ components:
       type: object
       required:
       - entered_address
+      - entrance_count
+      - apartment_count
       properties:
         registration_request_id:
           type: string
@@ -1376,6 +1423,12 @@ components:
         entered_address:
           type: string
           minLength: 1
+        entrance_count:
+          type: integer
+          minimum: 1
+        apartment_count:
+          type: integer
+          minimum: 1
         free_text:
           type: string
     gen.access.api.create_house_request.Response201:
@@ -1396,7 +1449,6 @@ components:
       type: object
       required:
       - house_id
-      - entrance_number
       - apartment_number
       - phone_number
       properties:
@@ -1433,8 +1485,6 @@ components:
       type: object
       required:
       - house_id
-      - full_name
-      - entrance_number
       - apartment_number
       properties:
         house_id:
@@ -1443,6 +1493,9 @@ components:
         full_name:
           type: string
           minLength: 1
+          maxLength: 255
+          description: Нужно только для первого явного подтверждения ФИО; позже можно
+            не передавать, а другое значение требует отдельной смены профиля.
         entrance_number:
           type: integer
           minimum: 1
@@ -1518,6 +1571,9 @@ components:
         address_key:
           type: string
         entrance_count:
+          type: integer
+          minimum: 1
+        apartment_count:
           type: integer
           minimum: 1
     gen.access.api.decide_house_request.Response200:
@@ -1611,6 +1667,8 @@ components:
           type: string
         entrance_count:
           type: integer
+        apartment_count:
+          type: integer
     gen.access.api.list_company_houses.QueryParams:
       type: object
       properties:
@@ -1640,7 +1698,9 @@ components:
         address_display:
           type: string
         entrance_number:
-          type: integer
+          type:
+          - integer
+          - 'null'
         apartment_number:
           type: integer
         phone_number:
@@ -1706,7 +1766,9 @@ components:
         address_display:
           type: string
         entrance_number:
-          type: integer
+          type:
+          - integer
+          - 'null'
         apartment_number:
           type: integer
         valid_from:
@@ -1757,7 +1819,9 @@ components:
           type: string
           format: uuid
         entrance_number:
-          type: integer
+          type:
+          - integer
+          - 'null'
         apartment_number:
           type: integer
         status:
@@ -1992,6 +2056,8 @@ components:
           type: string
         entrance_count:
           type: integer
+        apartment_count:
+          type: integer
     gen.access.api.search_houses.QueryParams:
       type: object
       properties:
@@ -2000,12 +2066,42 @@ components:
           minLength: 2
       required:
       - text
+    gen.access.api.update_house_details.Request:
+      type: object
+      required:
+      - house_id
+      - entrance_count
+      - apartment_count
+      properties:
+        house_id:
+          type: string
+          format: uuid
+        entrance_count:
+          type: integer
+          minimum: 1
+        apartment_count:
+          type: integer
+          minimum: 1
+    gen.access.api.update_house_details.Response200:
+      type: object
+      required:
+      - id
+      - entrance_count
+      - apartment_count
+      properties:
+        id:
+          type: string
+          format: uuid
+        entrance_count:
+          type: integer
+          minimum: 1
+        apartment_count:
+          type: integer
+          minimum: 1
     gen.access.api.update_resident_request.Request:
       type: object
       required:
       - request_id
-      - full_name
-      - entrance_number
       - apartment_number
       properties:
         request_id:
@@ -2014,6 +2110,9 @@ components:
         full_name:
           type: string
           minLength: 1
+          maxLength: 255
+          description: 'Устаревшее поле совместимости: если передано, должно совпадать
+            с общим ФИО профиля; снимок ФИО в заявке здесь не меняется.'
         entrance_number:
           type: integer
           minimum: 1
@@ -2040,6 +2139,7 @@ components:
       - id
       - kind
       - phone_verified
+      - full_name_confirmed
       - staff_assignments
       properties:
         id:
@@ -2049,6 +2149,8 @@ components:
           type: string
         full_name:
           type: string
+        full_name_confirmed:
+          type: boolean
         phone_number:
           type: string
         phone_verified:
@@ -2076,6 +2178,25 @@ components:
         can_manage_residents:
           type: boolean
         can_manage_issues:
+          type: boolean
+    gen.auth.api.update_profile_name.Request:
+      type: object
+      required:
+      - full_name
+      properties:
+        full_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+    gen.auth.api.update_profile_name.Response200:
+      type: object
+      required:
+      - full_name
+      - full_name_confirmed
+      properties:
+        full_name:
+          type: string
+        full_name_confirmed:
           type: boolean
     gen.auth.api.verify_contact.Request:
       type: object
@@ -2198,7 +2319,6 @@ components:
     gen.issues.api.create_card.TargetApartment:
       type: object
       required:
-      - entrance_number
       - apartment_number
       properties:
         entrance_number:
@@ -2228,6 +2348,12 @@ components:
         description:
           type: string
           minLength: 1
+        summary_description:
+          type: string
+          minLength: 1
+          maxLength: 1500
+          description: Сводное описание общей карточки. Если отсутствует, берётся
+            исходное описание жителя.
         scope_all_house:
           type: boolean
         target_entrances:
@@ -2249,7 +2375,6 @@ components:
     gen.issues.api.edit_card.TargetApartment:
       type: object
       required:
-      - entrance_number
       - apartment_number
       properties:
         entrance_number:
@@ -2279,6 +2404,10 @@ components:
         title:
           type: string
           minLength: 1
+        summary_description:
+          type: string
+          minLength: 1
+          maxLength: 1500
         scope_all_house:
           type: boolean
         target_entrances:
@@ -2475,12 +2604,21 @@ components:
       type: object
       required:
       - suggested_title
+      - summary_description
       - similar_card_ids
       - candidates
       - source
+      - description_check
+      - description_warning
       properties:
         suggested_title:
           type: string
+        summary_description:
+          type:
+          - string
+          - 'null'
+          maxLength: 500
+          description: Сводное описание от ИИ; null, если модель недоступна.
         similar_card_ids:
           type: array
           items:
@@ -2493,8 +2631,21 @@ components:
         source:
           type: string
           enum:
-          - groq
+          - gigachat
           - local
+        description_check:
+          type: string
+          enum:
+          - ok
+          - warning
+          - not_checked
+          description: ИИ не нашёл замечаний, предложил уточнение либо проверка не
+            проводилась. Поле не запрещает создать заявку.
+        description_warning:
+          type:
+          - string
+          - 'null'
+          description: Короткое необязательное уточнение от ИИ; null при ok и not_checked.
     gen.issues.api.support_card.Request:
       type: object
       required:

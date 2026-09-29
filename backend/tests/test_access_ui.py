@@ -16,7 +16,69 @@ from src.bot.handlers.access_ui import (
 class AccessUiTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.session = SimpleNamespace()
-        self.actor = SimpleNamespace(id=uuid4(), kind="resident")
+        self.actor = SimpleNamespace(
+            id=uuid4(), kind="resident", full_name=None,
+            full_name_is_manual=False, full_name_confirmed_at=None,
+        )
+
+    async def test_profile_button_and_confirmation_use_one_account_name(self) -> None:
+        with patch("src.bot.handlers.access_ui.set_dialog", new_callable=AsyncMock) as start:
+            reply = await handle_action(self.session, self.actor, "a:profile")
+        self.assertIn("Общее ФИО", reply.text)
+        self.assertEqual(start.await_args.kwargs["flow_kind"], "access_profile")
+
+        dialog = SimpleNamespace(flow_kind="access_profile", step="name", data={})
+        with patch("src.bot.handlers.access_ui.update_dialog", new_callable=AsyncMock) as update:
+            reply = await handle_text(self.session, self.actor, dialog, "  Иван  Иванов  ")
+        self.assertEqual(update.await_args.kwargs["data"]["full_name"], "Иван Иванов")
+        self.assertEqual(reply.buttons[0][0].payload, "a:profile_save")
+
+        dialog = SimpleNamespace(flow_kind="access_profile", step="review", data={"full_name": "Иван Иванов"})
+        with (
+            patch("src.bot.handlers.access_ui.get_dialog", new_callable=AsyncMock, return_value=dialog),
+            patch("src.bot.handlers.access_ui.update_profile_name", new_callable=AsyncMock) as save,
+            patch("src.bot.handlers.access_ui.clear_dialog", new_callable=AsyncMock),
+        ):
+            save.return_value = SimpleNamespace(full_name="Иван Иванов")
+            reply = await handle_action(self.session, self.actor, "a:profile_save")
+        save.assert_awaited_once_with(self.session, self.actor, full_name="Иван Иванов")
+        self.assertIn("подтверждено", reply.text)
+
+    async def test_confirmed_name_skips_name_step_in_new_access_request(self) -> None:
+        self.actor.full_name = "Иван Иванов"
+        self.actor.full_name_is_manual = True
+        self.actor.full_name_confirmed_at = object()
+        dialog = SimpleNamespace(
+            flow_kind="access_apply", step="confirm", draft_id=None,
+            data={"house_id": str(uuid4()), "address": "Пушкина, 5", "apartment_number": 12},
+        )
+        with (
+            patch("src.bot.handlers.access_ui.get_dialog", new_callable=AsyncMock, return_value=dialog),
+            patch("src.bot.handlers.access_ui._save_apply_draft", new_callable=AsyncMock),
+            patch("src.bot.handlers.access_ui.update_dialog", new_callable=AsyncMock) as update,
+        ):
+            reply = await handle_action(self.session, self.actor, "a:confirm_house")
+        self.assertEqual(update.await_args.kwargs["step"], "review")
+        self.assertIn("Иван Иванов", reply.text)
+
+    async def test_unconfirmed_name_is_not_implicitly_reused_from_profile_draft(self) -> None:
+        dialog = SimpleNamespace(
+            flow_kind="access_apply", step="review", draft_id=None,
+            data={
+                "house_id": str(uuid4()), "full_name": "Имя из MAX",
+                "name_from_profile": True, "apartment_number": 12,
+            },
+        )
+        with (
+            patch("src.bot.handlers.access_ui.get_dialog", new_callable=AsyncMock, return_value=dialog),
+            patch("src.bot.handlers.access_ui._save_apply_draft", new_callable=AsyncMock),
+            patch("src.bot.handlers.access_ui.update_dialog", new_callable=AsyncMock) as update,
+            patch("src.bot.handlers.access_ui.resident.create_resident_request", new_callable=AsyncMock) as create,
+        ):
+            reply = await handle_action(self.session, self.actor, "a:submit_apply")
+        self.assertEqual(update.await_args.kwargs["step"], "name")
+        self.assertIn("Введите ваше ФИО заново", reply.text)
+        create.assert_not_awaited()
 
     async def test_other_callbacks_and_dialogs_are_left_to_other_handlers(self) -> None:
         self.assertIsNone(await handle_action(self.session, self.actor, "i:list"))
@@ -96,7 +158,6 @@ class AccessUiTests(unittest.IsolatedAsyncioTestCase):
                 "house_id": str(uuid4()),
                 "address": "Пушкина, 5",
                 "full_name": "Иван Иванов",
-                "entrance_number": 2,
                 "apartment_number": 24,
                 "draft_revision": 3,
             },
@@ -117,6 +178,7 @@ class AccessUiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(update.await_args.kwargs["step"], "review")
         self.assertIn("Пушкина, 5", reply.text)
         self.assertIn("Иван Иванов", reply.text)
+        self.assertNotIn("подъезд", reply.text)
         self.assertEqual(reply.buttons[0][0].payload, "a:submit_apply")
 
     async def test_resident_draft_is_created_with_partial_data(self) -> None:
@@ -131,7 +193,7 @@ class AccessUiTests(unittest.IsolatedAsyncioTestCase):
             ) as update,
         ):
             save.return_value = SimpleNamespace(id=draft_id, revision=1)
-            data = {"house_id": str(uuid4()), "address": "Пушкина, 5"}
+            data = {"house_id": str(uuid4()), "address": "Пушкина, 5", "entrance_number": 2}
             await _save_apply_draft(self.session, self.actor, dialog, data)
         self.assertEqual(dialog.draft_id, draft_id)
         self.assertEqual(data["draft_revision"], 1)
@@ -139,6 +201,29 @@ class AccessUiTests(unittest.IsolatedAsyncioTestCase):
             save.await_args.kwargs["payload"], {"house_id": data["house_id"]}
         )
         update.assert_awaited_once()
+
+    async def test_apply_name_step_goes_directly_to_apartment(self) -> None:
+        dialog = SimpleNamespace(
+            flow_kind="access_apply", step="name", data={"house_id": str(uuid4())}
+        )
+        with (
+            patch("src.bot.handlers.access_ui._save_apply_draft", new_callable=AsyncMock),
+            patch("src.bot.handlers.access_ui.update_dialog", new_callable=AsyncMock) as update,
+        ):
+            reply = await handle_text(self.session, self.actor, dialog, "Иван Иванов")
+        self.assertEqual(update.await_args.kwargs["step"], "apartment")
+        self.assertIn("номер квартиры", reply.text)
+
+    async def test_offer_phone_step_goes_directly_to_apartment(self) -> None:
+        dialog = SimpleNamespace(
+            flow_kind="access_offer_new", step="phone", data={"house_id": str(uuid4())}
+        )
+        with patch(
+            "src.bot.handlers.access_ui.update_dialog", new_callable=AsyncMock
+        ) as update:
+            reply = await handle_text(self.session, self.actor, dialog, "+79990000000")
+        self.assertEqual(update.await_args.kwargs["step"], "apartment")
+        self.assertIn("номер квартиры", reply.text.lower())
 
     async def test_resident_draft_update_uses_current_revision(self) -> None:
         draft_id = uuid4()
@@ -197,7 +282,6 @@ class AccessUiTests(unittest.IsolatedAsyncioTestCase):
             self.actor,
             house_id=house_id,
             full_name="Иван Иванов",
-            entrance_number=2,
             apartment_number=24,
         )
         clear.assert_awaited_once_with(self.session, self.actor.id)
@@ -355,6 +439,221 @@ class AccessUiTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("номер", reply.text.lower())
         self.assertEqual(update.await_args.kwargs["step"], "phone")
         self.assertEqual(update.await_args.kwargs["data"]["name"], "УК Пример")
+
+    async def test_house_wizard_asks_for_both_counts_before_note(self) -> None:
+        dialog = SimpleNamespace(flow_kind="access_house", step="address", data={})
+
+        async def update(current, *, step=None, data=None):
+            current.step = step or current.step
+            current.data = data if data is not None else current.data
+
+        with patch("src.bot.handlers.access_ui.update_dialog", side_effect=update):
+            address = await handle_text(self.session, self.actor, dialog, "Пушкина 5")
+            self.assertEqual(dialog.step, "entrance_count")
+            self.assertIn("подъездов", address.text)
+            entrances = await handle_text(self.session, self.actor, dialog, "3")
+            self.assertEqual(dialog.step, "apartment_count")
+            self.assertIn("квартир", entrances.text)
+            apartments = await handle_text(self.session, self.actor, dialog, "70")
+            self.assertEqual(dialog.step, "note")
+            self.assertIn("пояснение", apartments.text)
+            review = await handle_text(self.session, self.actor, dialog, "нет")
+            self.assertEqual(dialog.step, "review")
+            self.assertIn("подъездов 3, квартир 70", review.text)
+
+    async def test_house_submit_passes_counts_to_domain(self) -> None:
+        company_id = uuid4()
+        dialog = SimpleNamespace(
+            flow_kind="access_house",
+            step="review",
+            data={
+                "source": "company",
+                "source_id": str(company_id),
+                "address": "Пушкина 5",
+                "entrance_count": 3,
+                "apartment_count": 70,
+                "note": "",
+            },
+        )
+        with (
+            patch("src.bot.handlers.access_ui.get_dialog", new=AsyncMock(return_value=dialog)),
+            patch("src.bot.handlers.access_ui.company.create_house_request", new_callable=AsyncMock) as create,
+            patch("src.bot.handlers.access_ui.clear_dialog", new_callable=AsyncMock),
+        ):
+            create.return_value = SimpleNamespace(id=uuid4())
+            await handle_action(self.session, self.actor, "a:house_submit")
+        create.assert_awaited_once_with(
+            self.session,
+            self.actor,
+            registration_request_id=None,
+            company_id=company_id,
+            entered_address="Пушкина 5",
+            entrance_count=3,
+            apartment_count=70,
+            free_text=None,
+        )
+
+    async def test_old_house_review_asks_for_missing_counts_before_submit(self) -> None:
+        dialog = SimpleNamespace(
+            flow_kind="access_house",
+            step="review",
+            data={"source": "company", "source_id": str(uuid4()), "address": "Пушкина 5"},
+        )
+        with (
+            patch("src.bot.handlers.access_ui.get_dialog", new=AsyncMock(return_value=dialog)),
+            patch("src.bot.handlers.access_ui.update_dialog", new_callable=AsyncMock) as update,
+            patch("src.bot.handlers.access_ui.company.create_house_request", new_callable=AsyncMock) as create,
+        ):
+            reply = await handle_action(self.session, self.actor, "a:house_submit")
+        self.assertIn("количество подъездов", reply.text)
+        self.assertEqual(update.await_args.kwargs["step"], "entrance_count")
+        create.assert_not_awaited()
+
+    async def test_support_decision_can_keep_counts_from_request(self) -> None:
+        request_id = uuid4()
+        dialog = SimpleNamespace(
+            flow_kind="access_decision",
+            step="note",
+            data={
+                "kind": "house_addition",
+                "request_id": str(request_id),
+                "outcome": "approved",
+                "proposed_entrance_count": 3,
+                "proposed_apartment_count": 70,
+            },
+        )
+
+        async def update(current, *, step=None, data=None):
+            current.step = step or current.step
+            current.data = data if data is not None else current.data
+
+        with (
+            patch("src.bot.handlers.access_ui.get_dialog", new=AsyncMock(return_value=dialog)),
+            patch("src.bot.handlers.access_ui.update_dialog", side_effect=update),
+            patch("src.bot.handlers.access_ui.company.decide_house_request", new_callable=AsyncMock) as decide,
+            patch("src.bot.handlers.access_ui.clear_dialog", new_callable=AsyncMock),
+            patch("src.bot.handlers.access_ui._request_detail", new_callable=AsyncMock),
+        ):
+            await handle_text(self.session, self.actor, dialog, "Проверено")
+            self.assertEqual(dialog.step, "entrance_count")
+            await handle_action(self.session, self.actor, "a:decision_keep_entrances")
+            self.assertEqual(dialog.step, "apartment_count")
+            await handle_action(self.session, self.actor, "a:decision_keep_apartments")
+            self.assertEqual(dialog.step, "review")
+            await handle_action(self.session, self.actor, "a:decision_submit")
+        decide.assert_awaited_once_with(
+            self.session,
+            self.actor,
+            request_id=request_id,
+            outcome="approved",
+            decision_note="Проверено",
+            proposed_address_key=None,
+            entrance_count=None,
+            apartment_count=None,
+        )
+
+    async def test_support_decision_can_correct_both_counts(self) -> None:
+        request_id = uuid4()
+        dialog = SimpleNamespace(
+            flow_kind="access_decision",
+            step="entrance_count",
+            data={
+                "kind": "house_addition",
+                "request_id": str(request_id),
+                "outcome": "approved",
+                "note": "Исправлено",
+                "proposed_entrance_count": 3,
+                "proposed_apartment_count": 70,
+            },
+        )
+
+        async def update(current, *, step=None, data=None):
+            current.step = step or current.step
+            current.data = data if data is not None else current.data
+
+        with (
+            patch("src.bot.handlers.access_ui.get_dialog", new=AsyncMock(return_value=dialog)),
+            patch("src.bot.handlers.access_ui.update_dialog", side_effect=update),
+            patch("src.bot.handlers.access_ui.company.decide_house_request", new_callable=AsyncMock) as decide,
+            patch("src.bot.handlers.access_ui.clear_dialog", new_callable=AsyncMock),
+            patch("src.bot.handlers.access_ui._request_detail", new_callable=AsyncMock),
+        ):
+            await handle_text(self.session, self.actor, dialog, "4")
+            self.assertEqual(dialog.step, "apartment_count")
+            await handle_text(self.session, self.actor, dialog, "80")
+            self.assertEqual(dialog.step, "review")
+            await handle_action(self.session, self.actor, "a:decision_submit")
+        decide.assert_awaited_once_with(
+            self.session,
+            self.actor,
+            request_id=request_id,
+            outcome="approved",
+            decision_note="Исправлено",
+            proposed_address_key=None,
+            entrance_count=4,
+            apartment_count=80,
+        )
+
+    async def test_support_can_correct_connected_house_from_button(self) -> None:
+        self.actor.kind = "support"
+        house_id = uuid4()
+        house = SimpleNamespace(
+            id=house_id,
+            address_display="Пушкина 5",
+            archived_at=None,
+            entrance_count=3,
+            apartment_count=70,
+        )
+        self.session.get = AsyncMock(return_value=house)
+        dialog = SimpleNamespace(
+            flow_kind="access_house_details",
+            step="entrance_count",
+            data={
+                "house_id": str(house_id),
+                "address": house.address_display,
+                "old_entrance_count": 3,
+                "old_apartment_count": 70,
+            },
+        )
+
+        async def update(current, *, step=None, data=None):
+            current.step = step or current.step
+            current.data = data if data is not None else current.data
+
+        with (
+            patch("src.bot.handlers.access_ui.set_dialog", new_callable=AsyncMock) as start,
+            patch("src.bot.handlers.access_ui.get_dialog", new=AsyncMock(return_value=dialog)),
+            patch("src.bot.handlers.access_ui.update_dialog", side_effect=update),
+            patch("src.bot.handlers.access_ui.company.update_house_details", new_callable=AsyncMock) as save,
+            patch("src.bot.handlers.access_ui.clear_dialog", new_callable=AsyncMock),
+        ):
+            reply = await handle_action(
+                self.session, self.actor, f"a:house_details:{house_id}"
+            )
+            self.assertIn("сейчас подъездов 3, квартир 70", reply.text)
+            self.assertEqual(start.await_args.kwargs["step"], "entrance_count")
+            await handle_text(self.session, self.actor, dialog, "4")
+            self.assertEqual(dialog.step, "apartment_count")
+            review = await handle_text(self.session, self.actor, dialog, "80")
+            self.assertIn("подъездов 4, квартир 80", review.text)
+            self.assertEqual(dialog.step, "review")
+            save.return_value = SimpleNamespace(
+                id=house_id,
+                address_display="Пушкина 5",
+                entrance_count=4,
+                apartment_count=80,
+            )
+            final = await handle_action(
+                self.session, self.actor, "a:house_details_submit"
+            )
+        save.assert_awaited_once_with(
+            self.session,
+            self.actor,
+            house_id=house_id,
+            entrance_count=4,
+            apartment_count=80,
+        )
+        self.assertIn("квартир 80", final.text)
 
     async def test_offer_response_uses_domain_service(self) -> None:
         offer_id = uuid4()

@@ -99,6 +99,27 @@ class AdminBotTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("adm:list:companies:7", payloads)
         self.assertIn("adm:search:companies", payloads)
 
+    async def test_people_list_shows_name_and_phone(self) -> None:
+        with patch.object(
+            admin_ui,
+            "admin_list",
+            new=AsyncMock(
+                return_value={
+                    "items": [
+                        {
+                            "id": str(uuid4()),
+                            "title": "Анна",
+                            "subtitle": "79991234567",
+                            "status": "resident",
+                        }
+                    ],
+                    "total": 1,
+                }
+            ),
+        ):
+            reply = await admin_ui._list(self.session, self.admin, "users", 0)
+        self.assertIn("Анна · 79991234567 · resident", reply.text)
+
     async def test_phone_invitation_form_requires_explicit_confirmation(self) -> None:
         dialog = SimpleNamespace(flow_kind="admin_action", step="start", data={})
 

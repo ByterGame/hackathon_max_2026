@@ -16,11 +16,11 @@ from src.db.models import Draft, User
 
 FLOW_FIELDS = {
     "issue_card": frozenset({
-        "house_id", "category_id", "title", "description", "scope_all_house",
+        "house_id", "category_id", "title", "description", "summary_description", "scope_all_house",
         "target_entrances", "target_apartments",
     }),
     "resident_request": frozenset({
-        "house_id", "full_name", "entrance_number", "apartment_number",
+        "house_id", "full_name", "name_from_profile", "entrance_number", "apartment_number",
     }),
 }
 MAX_PAYLOAD_BYTES = 32 * 1024
@@ -42,6 +42,12 @@ def _validate_payload(flow_kind: str, payload: dict[str, object]) -> None:
         raise DraftError(400, "invalid_payload", "Данные черновика должны быть объектом")
     if unknown := set(payload) - fields:
         raise DraftError(400, "invalid_payload", f"Недопустимые поля черновика: {', '.join(sorted(unknown))}")
+    if (
+        flow_kind == "resident_request"
+        and "name_from_profile" in payload
+        and not isinstance(payload["name_from_profile"], bool)
+    ):
+        raise DraftError(400, "invalid_payload", "Источник ФИО должен быть логическим значением")
     try:
         size = len(json.dumps(payload, ensure_ascii=False, allow_nan=False).encode("utf-8"))
     except (TypeError, ValueError) as error:

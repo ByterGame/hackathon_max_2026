@@ -15,7 +15,7 @@ responses:
 schemas:
   TargetApartment:
     type: object
-    required: [entrance_number, apartment_number]
+    required: [apartment_number]
     properties:
       entrance_number: {type: integer, minimum: 1}
       apartment_number: {type: integer, minimum: 1}
@@ -27,6 +27,7 @@ schemas:
       expected_version: {type: integer, minimum: 1}
       category_id: {type: string, format: uuid}
       title: {type: string, minLength: 1}
+      summary_description: {type: string, minLength: 1, maxLength: 1500}
       scope_all_house: {type: boolean}
       target_entrances:
         type: array

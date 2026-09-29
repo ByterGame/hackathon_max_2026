@@ -27,6 +27,7 @@ async def decide_house_request(
             decision_note=body.decision_note,
             proposed_address_key=body.address_key,
             entrance_count=body.entrance_count,
+            apartment_count=body.apartment_count,
         ),
         session,
     )

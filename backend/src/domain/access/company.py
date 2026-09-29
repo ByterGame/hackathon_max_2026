@@ -210,6 +210,8 @@ async def create_house_request(
     registration_request_id: UUID | None,
     company_id: UUID | None,
     entered_address: str,
+    entrance_count: int | None,
+    apartment_count: int | None,
     free_text: str | None,
 ) -> HouseAdditionRequest:
     if (registration_request_id is None) == (company_id is None):
@@ -233,6 +235,10 @@ async def create_house_request(
     address = entered_address.strip()
     if not address:
         raise AccessRuleError(400, "address_required", "Укажите адрес дома")
+    if entrance_count is None or entrance_count <= 0:
+        raise AccessRuleError(400, "invalid_entrances", "Укажите положительное количество подъездов")
+    if apartment_count is None or apartment_count <= 0:
+        raise AccessRuleError(400, "invalid_apartments", "Укажите положительное количество квартир")
     now = utcnow()
     request = HouseAdditionRequest(
         id=uuid4(),
@@ -240,6 +246,8 @@ async def create_house_request(
         registration_request_id=registration_request_id,
         company_id=company_id,
         entered_address=address,
+        entrance_count=entrance_count,
+        apartment_count=apartment_count,
         free_text=free_text.strip() if free_text else None,
         status="open",
         discussion=[],
@@ -273,6 +281,7 @@ async def decide_house_request(
     decision_note: str,
     proposed_address_key: str | None,
     entrance_count: int | None,
+    apartment_count: int | None,
 ) -> tuple[HouseAdditionRequest, House | None]:
     require_support(actor)
     if outcome not in {"approved", "rejected"}:
@@ -308,18 +317,27 @@ async def decide_house_request(
                 "house_exists",
                 "Дом уже подключён; передача УК здесь не выполняется",
             )
-        if entrance_count is not None and entrance_count <= 0:
+        resolved_entrances = entrance_count if entrance_count is not None else request.entrance_count
+        resolved_apartments = apartment_count if apartment_count is not None else request.apartment_count
+        if resolved_entrances is None or resolved_entrances <= 0:
             raise AccessRuleError(
                 400,
                 "invalid_entrances",
-                "Количество подъездов должно быть положительным",
+                "Укажите положительное количество подъездов",
+            )
+        if resolved_apartments is None or resolved_apartments <= 0:
+            raise AccessRuleError(
+                400,
+                "invalid_apartments",
+                "Укажите положительное количество квартир",
             )
         house = House(
             id=uuid4(),
             company_id=company_id,
             address_display=request.entered_address,
             address_key=key,
-            entrance_count=entrance_count,
+            entrance_count=resolved_entrances,
+            apartment_count=resolved_apartments,
             created_at=utcnow(),
         )
         session.add(house)
@@ -328,6 +346,8 @@ async def decide_house_request(
         await session.flush([house])
         request.company_id = company_id
         request.resolved_house_id = house.id
+        request.entrance_count = resolved_entrances
+        request.apartment_count = resolved_apartments
     request.status = "closed"
     request.outcome = outcome
     request.decision_note = note
@@ -345,3 +365,51 @@ async def decide_house_request(
     )
     await commit_or_conflict(session)
     return request, house
+
+
+async def update_house_details(
+    session: AsyncSession,
+    actor: User,
+    *,
+    house_id: UUID,
+    entrance_count: int,
+    apartment_count: int,
+) -> House:
+    """Support corrects counts without creating a second house request."""
+    require_support(actor)
+    if entrance_count <= 0:
+        raise AccessRuleError(400, "invalid_entrances", "Укажите положительное количество подъездов")
+    if apartment_count <= 0:
+        raise AccessRuleError(400, "invalid_apartments", "Укажите положительное количество квартир")
+    house = await require_row(session, House, house_id, for_update=True)
+    if house.archived_at is not None:
+        raise AccessRuleError(409, "house_archived", "Архивный дом нельзя изменить здесь")
+    before = {
+        "entrance_count": house.entrance_count,
+        "apartment_count": house.apartment_count,
+    }
+    house.entrance_count = entrance_count
+    house.apartment_count = apartment_count
+    requests = (
+        await session.scalars(
+            select(HouseAdditionRequest)
+            .where(HouseAdditionRequest.resolved_house_id == house.id)
+            .with_for_update()
+        )
+    ).all()
+    for request in requests:
+        request.entrance_count = entrance_count
+        request.apartment_count = apartment_count
+        request.updated_at = utcnow()
+        request.version += 1
+    audit(
+        session,
+        entity_kind="house",
+        entity_id=house.id,
+        action="counts_corrected",
+        actor_id=actor.id,
+        before=before,
+        after={"entrance_count": entrance_count, "apartment_count": apartment_count},
+    )
+    await commit_or_conflict(session)
+    return house

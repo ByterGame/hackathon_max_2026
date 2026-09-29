@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import { accessRequestStatusLabels, listAccessRequestsPage, requestAccessCancellation, type AccessRequestDetail, type AccessRequestKind, type AccessRequestStatus, type AccessRequestsPage } from "../features/issues/integrations/access_actions_api";
 import { isDemoMode } from "../features/issues/integrations/client_api";
-import { formatDate, type CompanyRegistrationRequest, type HouseAdditionRequest, type ResidentRequest } from "../features/issues/types";
+import { formatApartmentLocation, formatDate, formatHouseCounts, type CompanyRegistrationRequest, type HouseAdditionRequest, type ResidentRequest } from "../features/issues/types";
 import { NotificationToggle } from "../features/notifications/ui/NotificationToggle";
 import { HttpError } from "../shared/base_http_client";
 import { ScreenHeader } from "../shared/common_ui/ScreenHeader";
@@ -32,9 +32,9 @@ const PAGE_SIZE = 20;
 
 function summaries({ residentRequests, companyRequests, houseRequests }: RequestLists): RequestSummary[] {
   return [
-    ...residentRequests.map((item) => ({ kind: "resident" as const, id: item.id, title: item.address ?? "Дом по заявке", description: `Доступ к дому · подъезд №${item.entrance}, кв. ${item.apartment}`, status: item.status, outcome: item.outcome, decisionNote: item.decisionNote, createdAt: item.createdAt })),
+    ...residentRequests.map((item) => ({ kind: "resident" as const, id: item.id, title: item.address ?? "Дом по заявке", description: `Доступ к дому · ${formatApartmentLocation(item.apartment, item.entrance)}`, status: item.status, outcome: item.outcome, decisionNote: item.decisionNote, createdAt: item.createdAt })),
     ...companyRequests.map((item) => ({ kind: "company_registration" as const, id: item.id, title: item.companyName || "Регистрация УК", description: "Регистрация управляющей компании", status: item.status, outcome: item.outcome, decisionNote: item.decisionNote, createdAt: item.createdAt })),
-    ...houseRequests.map((item) => ({ kind: "house_addition" as const, id: item.id, title: item.address, description: "Подключение дома", status: item.status, outcome: item.outcome, decisionNote: item.decisionNote, createdAt: item.createdAt })),
+    ...houseRequests.map((item) => ({ kind: "house_addition" as const, id: item.id, title: item.address, description: formatHouseCounts(item.entranceCount, item.apartmentCount), status: item.status, outcome: item.outcome, decisionNote: item.decisionNote, createdAt: item.createdAt })),
   ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
@@ -43,7 +43,7 @@ function summaryFromPage(item: AccessRequestDetail): RequestSummary {
   if (item.kind === "resident") return {
     ...common,
     title: item.address_display ?? "Дом по заявке",
-    description: `Доступ к дому · подъезд №${item.submitted_entrance_number ?? "—"}, кв. ${item.submitted_apartment_number ?? "—"}`,
+    description: `Доступ к дому · ${formatApartmentLocation(item.submitted_apartment_number ?? 0, item.submitted_entrance_number ?? undefined)}`,
   };
   if (item.kind === "company_registration") return {
     ...common,
@@ -53,7 +53,7 @@ function summaryFromPage(item: AccessRequestDetail): RequestSummary {
   return {
     ...common,
     title: item.entered_address || "Подключение дома",
-    description: "Подключение дома",
+    description: formatHouseCounts(item.entrance_count, item.apartment_count),
   };
 }
 

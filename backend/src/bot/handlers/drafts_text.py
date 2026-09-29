@@ -27,8 +27,8 @@ from src.gen.issues.api.create_card import Request as IssueCardBody
 DRAFT_HELP = (
     "Черновики доступны и в мини-приложении. Формат команд:\n"
     "/draft list [issue_card|resident_request] — список; /draft show UUID — открыть.\n"
-    "/draft save issue_card | UUID_дома | код_категории | all/e:1,2/a:1:12 | название | описание\n"
-    "/draft save resident_request | UUID_дома | подъезд | квартира | ФИО\n"
+    "/draft save issue_card | UUID_дома | код_категории | all/e:1,2/a:12 | название | описание\n"
+    "/draft save resident_request | UUID_дома | квартира | ФИО\n"
     "/filehelp — добавить фото, PDF или видео в черновик проблемы.\n"
     "Для обновления замените тип на «UUID_черновика revision» и повторите все поля.\n"
     "/draft send UUID revision — подать обращение и отметить черновик отправленным.\n"
@@ -43,15 +43,13 @@ def _uuid(value: str) -> UUID:
         raise ValueError("Нужен корректный UUID черновика или дома") from error
 
 
-def _positive(value: str) -> int:
+def _positive(value: str, label: str = "Номер квартиры") -> int:
     try:
         result = int(value)
     except ValueError as error:
-        raise ValueError(
-            "Номер подъезда и квартиры должен быть целым числом"
-        ) from error
+        raise ValueError(f"{label} должен быть целым числом") from error
     if result < 1:
-        raise ValueError("Номер подъезда и квартиры должен быть положительным")
+        raise ValueError(f"{label} должен быть положительным")
     return result
 
 
@@ -80,20 +78,22 @@ async def _save_text(session: AsyncSession, actor: User, raw: str) -> str:
 
     fields = parts[1:]
     if flow_kind == "resident_request":
-        if len(fields) != 4 or not all(fields):
+        if len(fields) not in {3, 4} or not all(fields):
             raise ValueError(
-                "Формат: /draft save resident_request | UUID_дома | подъезд | квартира | ФИО"
+                "Формат: /draft save resident_request | UUID_дома | квартира | ФИО"
             )
+        legacy = len(fields) == 4
         payload = {
             "house_id": str(_uuid(fields[0])),
-            "entrance_number": _positive(fields[1]),
-            "apartment_number": _positive(fields[2]),
-            "full_name": fields[3],
+            "apartment_number": _positive(fields[2] if legacy else fields[1]),
+            "full_name": fields[3] if legacy else fields[2],
         }
+        if legacy:
+            payload["entrance_number"] = _positive(fields[1], "Номер подъезда")
     else:
         if len(fields) != 5 or not all(fields):
             raise ValueError(
-                "Формат: /draft save issue_card | UUID_дома | код_категории | all/e:1,2/a:1:12 | название | описание"
+                "Формат: /draft save issue_card | UUID_дома | код_категории | all/e:1,2/a:12 | название | описание"
             )
         category = await _category(session, fields[1])
         scope_all, entrances, apartments = _scope(fields[2])
@@ -103,11 +103,13 @@ async def _save_text(session: AsyncSession, actor: User, raw: str) -> str:
             "scope_all_house": scope_all,
             "target_entrances": entrances,
             "target_apartments": [
-                {"entrance_number": entrance, "apartment_number": apartment}
+                {"apartment_number": apartment}
+                | ({"entrance_number": entrance} if entrance is not None else {})
                 for entrance, apartment in apartments
             ],
             "title": fields[3],
             "description": fields[4],
+            "summary_description": fields[4],
         }
     draft = await save_draft(
         session,
@@ -150,6 +152,7 @@ async def _send_text(
                 category_id=body.category_id,
                 title=body.title,
                 description=body.description,
+                summary_description=draft.payload.get("summary_description") or body.description,
                 scope_all_house=body.scope_all_house,
                 target_entrances=body.target_entrances or [],
                 target_apartments=[
@@ -186,8 +189,12 @@ async def _send_text(
                 actor,
                 house_id=body.house_id,
                 full_name=body.full_name,
-                entrance_number=body.entrance_number,
                 apartment_number=body.apartment_number,
+                **(
+                    {"entrance_number": body.entrance_number}
+                    if body.entrance_number is not None
+                    else {}
+                ),
             )
     except (IssueError, AccessRuleError, FileError, ValueError):
         await session.rollback()

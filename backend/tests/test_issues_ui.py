@@ -24,10 +24,24 @@ class IssueUiTests(unittest.IsolatedAsyncioTestCase):
             await issues_ui.handle_action(self.session, self.actor, "a:houses")
         )
 
+    async def test_unknown_entrance_gives_only_apartment_button(self) -> None:
+        self.session.execute = AsyncMock(
+            return_value=SimpleNamespace(all=lambda: [(None, 14)])
+        )
+        reply = await issues_ui._scope_options(
+            self.session,
+            self.actor,
+            SimpleNamespace(data={"house_id": str(uuid4())}),
+        )
+        payloads = [button.payload for row in reply.buttons for button in row]
+        self.assertIn("i:scope:apartment:14", payloads)
+        self.assertFalse(any(payload.startswith("i:scope:entrance:") for payload in payloads))
+
     async def test_preview_offers_submission_only_after_attachment_step(self) -> None:
         data = {
             "title": "Нет света",
             "description": "В доме нет света",
+            "summary_description": "Отсутствует электроснабжение в доме.",
             "scope": "e:2+a:3:14",
             "suggestions": [],
         }
@@ -45,10 +59,49 @@ class IssueUiTests(unittest.IsolatedAsyncioTestCase):
         ]
         self.assertIn("i:issue:continue", review_payloads)
         self.assertNotIn("i:issue:submit", review_payloads)
+        self.assertNotIn("i:issue:edit_summary", review_payloads)
         self.assertIn("i:issue:submit", attachment_payloads)
+        self.assertIn("i:issue:edit_summary", attachment_payloads)
         self.assertIn(
-            "Область: подъезды 2; квартиры 3/14", issues_ui._preview(review).text
+            "Краткое формализованное описание: Отсутствует электроснабжение",
+            issues_ui._preview(review).text,
         )
+        self.assertIn(
+            "Область: подъезды 2; квартиры 14", issues_ui._preview(review).text
+        )
+
+    async def test_preview_explains_automatic_check_source_and_warning(self) -> None:
+        base = {
+            "title": "Нет света",
+            "description": "Нет света",
+            "scope": "all",
+            "suggestions": [],
+        }
+        local = issues_ui._preview(
+            SimpleNamespace(step="review", data={**base, "suggestion_source": "local"})
+        )
+        self.assertIn("Нейросеть не использовалась", local.text)
+        warning = issues_ui._preview(
+            SimpleNamespace(
+                step="review",
+                data={
+                    **base,
+                    "suggestion_source": "gigachat",
+                    "description_check": "warning",
+                    "description_warning": "Где именно нет света?",
+                },
+            )
+        )
+        self.assertIn("GigaChat обработал описание", warning.text)
+        self.assertIn("Где именно нет света?", warning.text)
+        self.assertIn("Автоматическая сводка недоступна", local.text)
+        gigachat = issues_ui._preview(
+            SimpleNamespace(
+                step="review",
+                data={**base, "suggestion_source": "gigachat", "description_check": "ok"},
+            )
+        )
+        self.assertIn("GigaChat обработал описание", gigachat.text)
 
     async def test_card_shows_affected_entrance_and_apartment(self) -> None:
         card_id, house_id, category_id = uuid4(), uuid4(), uuid4()
@@ -83,7 +136,7 @@ class IssueUiTests(unittest.IsolatedAsyncioTestCase):
             ),
         ):
             reply = await issues_ui._card(self.session, self.actor, card_id)
-        self.assertIn("Область: подъезды 2; квартиры 3/14", reply.text)
+        self.assertIn("Область: подъезды 2; квартиры 14", reply.text)
         payloads = [button.payload for row in reply.buttons for button in row]
         self.assertIn(f"f:card:{card_id}", payloads)
         self.assertIn(f"i:discussion:{card_id}", payloads)
@@ -311,7 +364,13 @@ class IssueUiTests(unittest.IsolatedAsyncioTestCase):
             updated_at=None,
         )
         suggestion = SimpleNamespace(
-            suggested_title="Не работает лифт", similar_card_ids=[], candidates=[]
+            suggested_title="Не работает лифт",
+            similar_card_ids=[],
+            candidates=[],
+            source="gigachat",
+            description_check="ok",
+            description_warning=None,
+            summary_description="Не работает лифт в подъезде.",
         )
         with (
             patch.object(
@@ -331,6 +390,103 @@ class IssueUiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(dialog.draft_id, draft_id)
         self.assertEqual(save.await_args.kwargs["payload"]["target_entrances"], [2])
         self.assertEqual(save.await_args.kwargs["payload"]["scope_all_house"], False)
+        self.assertEqual(
+            save.await_args.kwargs["payload"]["summary_description"],
+            "Не работает лифт в подъезде.",
+        )
+        self.assertIn("GigaChat обработал описание", result.text)
+
+    async def test_local_preview_keeps_raw_and_summary_in_separate_fields(self) -> None:
+        house_id, category_id = uuid4(), uuid4()
+        dialog = SimpleNamespace(
+            data={
+                "house_id": str(house_id),
+                "category_id": str(category_id),
+                "description": "Лифт не работает с утра",
+            },
+            draft_id=None,
+            step="scope",
+        )
+        suggestion = SimpleNamespace(
+            suggested_title="Лифт не работает",
+            similar_card_ids=[],
+            candidates=[],
+            source="local",
+            description_check="not_checked",
+            description_warning=None,
+            summary_description=None,
+        )
+        with (
+            patch.object(issues_ui, "suggest_issue", new=AsyncMock(return_value=suggestion)),
+            patch.object(
+                issues_ui, "save_draft",
+                new=AsyncMock(return_value=SimpleNamespace(id=uuid4(), revision=1)),
+            ) as save,
+        ):
+            reply = await issues_ui._prepare_preview(
+                self.session, self.actor, dialog, "all"
+            )
+        payload = save.await_args.kwargs["payload"]
+        self.assertEqual(payload["description"], "Лифт не работает с утра")
+        self.assertEqual(payload["summary_description"], "Лифт не работает с утра")
+        self.assertIn("Автоматическая сводка недоступна", reply.text)
+
+    async def test_summary_can_be_changed_only_on_final_screen(self) -> None:
+        draft_id = uuid4()
+        dialog = SimpleNamespace(
+            flow_kind="issue_new",
+            step="review",
+            draft_id=draft_id,
+            data={
+                "title": "Лифт",
+                "description": "Лифт не работает",
+                "summary_description": "Лифт неисправен.",
+                "scope": "all",
+                "draft_revision": 2,
+                "suggestions": [],
+            },
+        )
+        with patch.object(issues_ui, "get_dialog", new=AsyncMock(return_value=dialog)):
+            blocked = await issues_ui.handle_action(
+                self.session, self.actor, "i:issue:edit_summary"
+            )
+            self.assertIn("уже неактуален", blocked.text)
+            dialog.step = "attachments"
+            opened = await issues_ui.handle_action(
+                self.session, self.actor, "i:issue:edit_summary"
+            )
+        self.assertEqual(dialog.step, "edit_summary")
+        self.assertIn("формализованное описание", opened.text)
+
+        draft = SimpleNamespace(
+            id=draft_id,
+            revision=2,
+            payload={
+                "description": "Лифт не работает",
+                "summary_description": "Лифт неисправен.",
+            },
+        )
+        with (
+            patch.object(issues_ui, "get_draft", new=AsyncMock(return_value=draft)),
+            patch.object(
+                issues_ui,
+                "save_draft",
+                new=AsyncMock(return_value=SimpleNamespace(revision=3)),
+            ) as save,
+        ):
+            reply = await issues_ui.handle_text(
+                self.session, self.actor, dialog, "  Лифт остановился  "
+            )
+        self.assertEqual(dialog.step, "attachments")
+        self.assertEqual(dialog.data["draft_revision"], 3)
+        self.assertEqual(
+            save.await_args.kwargs["payload"],
+            {
+                "description": "Лифт не работает",
+                "summary_description": "Лифт остановился",
+            },
+        )
+        self.assertIn("Краткое формализованное описание: Лифт остановился", reply.text)
 
     async def test_duplicate_button_adds_resident_report_to_existing_card(self) -> None:
         card_id, draft_id = uuid4(), uuid4()

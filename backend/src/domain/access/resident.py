@@ -4,6 +4,7 @@ from datetime import datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import or_, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.models import (
@@ -33,6 +34,11 @@ from src.domain.access.rules import (
     require_user_kind,
     require_verified_phone,
 )
+from src.domain.profile import (
+    has_confirmed_full_name,
+    normalize_full_name,
+    resolve_request_full_name,
+)
 
 
 async def create_resident_request(
@@ -40,32 +46,33 @@ async def create_resident_request(
     actor: User,
     *,
     house_id: UUID,
-    full_name: str,
-    entrance_number: int,
+    full_name: str | None = None,
     apartment_number: int,
+    entrance_number: int | None = None,
 ) -> ResidentRequest:
     require_verified_phone(actor)
     require_user_kind(actor, {"unassigned", "resident"})
-    if entrance_number <= 0 or apartment_number <= 0:
+    if apartment_number <= 0 or (entrance_number is not None and entrance_number <= 0):
         raise AccessRuleError(
             400,
             "invalid_apartment",
-            "Номера подъезда и квартиры должны быть положительными",
+            "Номер квартиры и указанный номер подъезда должны быть положительными",
         )
     house = await require_row(session, House, house_id)
     if house.archived_at is not None:
         raise AccessRuleError(409, "house_unavailable", "Дом не подключён")
-    if house.entrance_count is not None and entrance_number > house.entrance_count:
+    if (
+        entrance_number is not None
+        and house.entrance_count is not None
+        and entrance_number > house.entrance_count
+    ):
         raise AccessRuleError(400, "invalid_entrance", "Такого подъезда нет в доме")
-    name = full_name.strip()
-    if not name:
-        raise AccessRuleError(400, "name_required", "Укажите ФИО")
+    name = await resolve_request_full_name(session, actor, full_name)
     existing = await session.scalar(
         select(ResidentRequest)
         .where(
             ResidentRequest.applicant_user_id == actor.id,
             ResidentRequest.house_id == house_id,
-            ResidentRequest.submitted_entrance_number == entrance_number,
             ResidentRequest.submitted_apartment_number == apartment_number,
             ResidentRequest.status.in_(["open", "reviewing", "needs_info"]),
         )
@@ -104,32 +111,39 @@ async def update_resident_request(
     actor: User,
     *,
     request_id: UUID,
-    full_name: str,
-    entrance_number: int,
+    full_name: str | None = None,
     apartment_number: int,
+    entrance_number: int | None = None,
 ) -> ResidentRequest:
     request = await require_row(session, ResidentRequest, request_id, for_update=True)
     if request.applicant_user_id != actor.id:
         raise AccessRuleError(403, "forbidden", "Можно исправить только свою заявку")
     require_open_request(request.status)
-    if entrance_number <= 0 or apartment_number <= 0:
+    if apartment_number <= 0 or (entrance_number is not None and entrance_number <= 0):
         raise AccessRuleError(
             400,
             "invalid_apartment",
-            "Номера подъезда и квартиры должны быть положительными",
+            "Номер квартиры и указанный номер подъезда должны быть положительными",
         )
     house = await require_row(session, House, request.house_id)
-    if house.entrance_count is not None and entrance_number > house.entrance_count:
+    if (
+        entrance_number is not None
+        and house.entrance_count is not None
+        and entrance_number > house.entrance_count
+    ):
         raise AccessRuleError(400, "invalid_entrance", "Такого подъезда нет в доме")
-    name = full_name.strip()
-    if not name:
-        raise AccessRuleError(400, "name_required", "Укажите ФИО")
+    if full_name is not None:
+        name = normalize_full_name(full_name)
+        if not has_confirmed_full_name(actor) or name != actor.full_name:
+            raise AccessRuleError(
+                409,
+                "profile_name_mismatch",
+                "В заявках используется ФИО из профиля. Сначала измените его явно в профиле",
+            )
     before = {
-        "full_name": request.submitted_full_name,
         "entrance_number": request.submitted_entrance_number,
         "apartment_number": request.submitted_apartment_number,
     }
-    request.submitted_full_name = name
     request.submitted_entrance_number = entrance_number
     request.submitted_apartment_number = apartment_number
     request.updated_at = utcnow()
@@ -142,7 +156,6 @@ async def update_resident_request(
         actor_id=actor.id,
         before=before,
         after={
-            "full_name": name,
             "entrance_number": entrance_number,
             "apartment_number": apartment_number,
         },
@@ -165,11 +178,57 @@ async def _require_no_active_grant(
             or_(ResidentGrant.valid_to.is_(None), ResidentGrant.valid_to > now),
         )
         .with_for_update()
+        .execution_options(populate_existing=True)
     )
     if grant is not None:
         raise AccessRuleError(
             409, "already_has_access", "Доступ к квартире уже действует"
         )
+
+
+async def _get_or_create_apartment(
+    session: AsyncSession,
+    house: House,
+    apartment_number: int,
+    entrance_number: int | None,
+) -> Apartment:
+    """Resolve by house and apartment number; only an approved access flow may set the entrance."""
+    proposed_id = uuid4()
+    created_id = await session.scalar(
+        insert(Apartment)
+        .values(
+            id=proposed_id,
+            house_id=house.id,
+            apartment_number=apartment_number,
+            entrance_number=entrance_number,
+        )
+        .on_conflict_do_nothing(
+            index_elements=[Apartment.house_id, Apartment.apartment_number]
+        )
+        .returning(Apartment.id)
+    )
+    if created_id is not None:
+        return await require_row(session, Apartment, created_id)
+    apartment = await session.scalar(
+        select(Apartment)
+        .where(
+            Apartment.house_id == house.id,
+            Apartment.apartment_number == apartment_number,
+        )
+        .with_for_update()
+    )
+    if apartment is None:
+        raise AccessRuleError(409, "apartment_conflict", "Не удалось определить квартиру")
+    if entrance_number is not None:
+        if apartment.entrance_number is None:
+            apartment.entrance_number = entrance_number
+        elif apartment.entrance_number != entrance_number:
+            raise AccessRuleError(
+                409,
+                "apartment_entrance_conflict",
+                "Квартира уже указана в другом подъезде",
+            )
+    return apartment
 
 
 async def decide_resident_request(
@@ -196,22 +255,12 @@ async def decide_resident_request(
         )
         require_verified_phone(applicant)
         require_user_kind(applicant, {"unassigned", "resident"})
-        apartment = await session.scalar(
-            select(Apartment).where(
-                Apartment.house_id == house.id,
-                Apartment.entrance_number == request.submitted_entrance_number,
-                Apartment.apartment_number == request.submitted_apartment_number,
-            )
+        apartment = await _get_or_create_apartment(
+            session,
+            house,
+            request.submitted_apartment_number,
+            request.submitted_entrance_number,
         )
-        if apartment is None:
-            apartment = Apartment(
-                id=uuid4(),
-                house_id=house.id,
-                entrance_number=request.submitted_entrance_number,
-                apartment_number=request.submitted_apartment_number,
-            )
-            session.add(apartment)
-            await session.flush()
         await _require_no_active_grant(session, applicant.id, apartment.id)
         grant = ResidentGrant(
             id=uuid4(),
@@ -250,38 +299,29 @@ async def create_resident_offer(
     actor: User,
     *,
     house_id: UUID,
-    entrance_number: int,
     apartment_number: int,
     phone_number: str,
     valid_to: datetime | None,
+    entrance_number: int | None = None,
 ) -> ResidentOffer:
     require_future_expiry(valid_to)
     house = await require_row(session, House, house_id)
     await require_staff(session, actor, house.company_id, "can_manage_residents")
-    if entrance_number <= 0 or apartment_number <= 0:
+    if apartment_number <= 0 or (entrance_number is not None and entrance_number <= 0):
         raise AccessRuleError(
             400,
             "invalid_apartment",
-            "Номера подъезда и квартиры должны быть положительными",
+            "Номер квартиры и указанный номер подъезда должны быть положительными",
         )
-    if house.entrance_count is not None and entrance_number > house.entrance_count:
+    if (
+        entrance_number is not None
+        and house.entrance_count is not None
+        and entrance_number > house.entrance_count
+    ):
         raise AccessRuleError(400, "invalid_entrance", "Такого подъезда нет в доме")
-    apartment = await session.scalar(
-        select(Apartment).where(
-            Apartment.house_id == house.id,
-            Apartment.entrance_number == entrance_number,
-            Apartment.apartment_number == apartment_number,
-        )
+    apartment = await _get_or_create_apartment(
+        session, house, apartment_number, entrance_number
     )
-    if apartment is None:
-        apartment = Apartment(
-            id=uuid4(),
-            house_id=house.id,
-            entrance_number=entrance_number,
-            apartment_number=apartment_number,
-        )
-        session.add(apartment)
-        await session.flush()
     phone = normalize_phone(phone_number)
     await lock_phone_role(session, phone)
     competing_support = await session.scalar(

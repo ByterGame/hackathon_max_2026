@@ -3,7 +3,7 @@
 from enum import StrEnum
 from uuid import UUID
 
-from pydantic import BaseModel, constr
+from pydantic import BaseModel, Field, constr
 
 
 class Request(BaseModel):
@@ -18,12 +18,29 @@ class Candidate(BaseModel):
 
 
 class Source(StrEnum):
-    groq = 'groq'
+    gigachat = 'gigachat'
     local = 'local'
+
+
+class DescriptionCheck(StrEnum):
+    ok = 'ok'
+    warning = 'warning'
+    not_checked = 'not_checked'
 
 
 class Response200(BaseModel):
     suggested_title: str
+    summary_description: constr(max_length=500) | None = Field(
+        ..., description='Сводное описание от ИИ; null, если модель недоступна.'
+    )
     similar_card_ids: list[UUID]
     candidates: list[Candidate]
     source: Source
+    description_check: DescriptionCheck = Field(
+        ...,
+        description='ИИ не нашёл замечаний, предложил уточнение либо проверка не проводилась. Поле не запрещает создать заявку.',
+    )
+    description_warning: str | None = Field(
+        ...,
+        description='Короткое необязательное уточнение от ИИ; null при ok и not_checked.',
+    )

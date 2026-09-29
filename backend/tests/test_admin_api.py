@@ -13,7 +13,7 @@ from src.domain.access.requests import add_discussion_message as add_access_disc
 from src.domain.access.staff import assign_staff
 from src.domain.access.resident import create_resident_offer
 from src.domain.admin import admin_action, admin_get, admin_list
-from src.domain.admin.read import _summary
+from src.domain.admin.read import _search_clause, _summary
 from src.domain.issues.service import IssueError, add_comment, require_unmerged_card
 from src.main import create_app
 
@@ -312,6 +312,24 @@ class AdminShapeTests(unittest.TestCase):
         self.assertEqual(item["id"], str(row_id))
         self.assertEqual(item["kind"], "resident")
         self.assertEqual(item["data"]["discussion"][0]["text"], "Уточните квартиру")
+
+    def test_user_summary_uses_name_and_keeps_identity_visible(self) -> None:
+        from src.db.models import User
+
+        row = User(
+            id=uuid4(),
+            max_user_id="429817952",
+            phone_number="79991234567",
+            full_name="Анна",
+            max_username="annamax",
+            kind="resident",
+        )
+        item = _summary("users", row)
+        self.assertEqual(item["title"], "Анна")
+        self.assertEqual(item["subtitle"], "79991234567")
+        self.assertEqual(item["data"]["max_username"], "annamax")
+        search_sql = str(_search_clause("users", User, "annamax"))
+        self.assertIn("max_username", search_sql)
 
 
 if __name__ == "__main__":

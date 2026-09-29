@@ -760,6 +760,36 @@ router.add_api_route(
     },
 )
 
+_handler = import_module('src.views.access.update_house_details')
+_models = import_module('src.gen.access.api.update_house_details')
+_RESPONSE_CODES_ACCESS_UPDATE_HOUSE_DETAILS = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/access/update_house_details',
+    endpoint=_with_response_codes(
+        _handler.update_house_details,
+        _RESPONSE_CODES_ACCESS_UPDATE_HOUSE_DETAILS,
+    ),
+    methods=['POST'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/access/update_house_details', 'POST'
+    ) else [],
+    operation_id='access_update_house_details',
+    summary='Поддержка исправляет количество подъездов и квартир подключённого дома',
+    description=None,
+    tags=['access'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Данные дома обновлены.',
+            "model": _models.Response200,
+        },
+    },
+)
+
 _handler = import_module('src.views.access.update_resident_request')
 _models = import_module('src.gen.access.api.update_resident_request')
 _RESPONSE_CODES_ACCESS_UPDATE_RESIDENT_REQUEST = {
@@ -815,6 +845,36 @@ router.add_api_route(
     responses={
         200: {
             "description": 'Данные текущего аккаунта.',
+            "model": _models.Response200,
+        },
+    },
+)
+
+_handler = import_module('src.views.auth.update_profile_name')
+_models = import_module('src.gen.auth.api.update_profile_name')
+_RESPONSE_CODES_AUTH_UPDATE_PROFILE_NAME = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/auth/update_profile_name',
+    endpoint=_with_response_codes(
+        _handler.update_profile_name,
+        _RESPONSE_CODES_AUTH_UPDATE_PROFILE_NAME,
+    ),
+    methods=['POST'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/auth/update_profile_name', 'POST'
+    ) else [],
+    operation_id='auth_update_profile_name',
+    summary='Явно подтвердить или изменить ФИО общего профиля',
+    description='ФИО применяется ко всем новым заявкам на доступ. В незакрытых заявках ФИО обновится; закрытые и отменённые сохраняют исторический снимок.',
+    tags=['auth'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'ФИО подтверждено в общем профиле.',
             "model": _models.Response200,
         },
     },
@@ -1289,7 +1349,7 @@ router.add_api_route(
         '/issues/suggest', 'POST'
     ) else [],
     operation_id='issues_suggest',
-    summary='Предложить краткое название проблемы и похожие открытые карточки',
+    summary='Предложить название, сводное описание и похожие открытые карточки',
     description=None,
     tags=['issues'],
     deprecated=False,

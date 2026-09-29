@@ -13,8 +13,14 @@ class IssueBotScopeTests(unittest.TestCase):
             (False, [1, 2], [(2, 7), (3, 18)]),
         )
 
+    def test_apartment_scope_needs_only_apartment_number(self) -> None:
+        self.assertEqual(
+            _scope("e:2+a:18,7"),
+            (False, [2], [(None, 7), (None, 18)]),
+        )
+
     def test_rejects_empty_and_invalid_scope(self) -> None:
-        for value in ("e:", "a:1", "e:0", "a:1:0", "e:1+e:2", "all+a:1:2"):
+        for value in ("e:", "a:", "e:0", "a:1:0", "a:1:2,3:2", "e:1+e:2", "all+a:1:2"):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 _scope(value)
 

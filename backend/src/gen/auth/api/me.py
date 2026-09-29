@@ -17,6 +17,7 @@ class Response200(BaseModel):
     id: UUID
     kind: str
     full_name: str | None = None
+    full_name_confirmed: bool
     phone_number: str | None = None
     phone_verified: bool
     staff_assignments: list[StaffAssignment]

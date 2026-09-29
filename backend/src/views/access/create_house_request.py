@@ -25,6 +25,8 @@ async def create_house_request(
             registration_request_id=body.registration_request_id,
             company_id=body.company_id,
             entered_address=body.entered_address,
+            entrance_count=body.entrance_count,
+            apartment_count=body.apartment_count,
             free_text=body.free_text,
         ),
         session,

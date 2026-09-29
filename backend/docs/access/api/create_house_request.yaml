@@ -17,7 +17,7 @@ responses:
 schemas:
   Request:
     type: object
-    required: [entered_address]
+    required: [entered_address, entrance_count, apartment_count]
     properties:
       registration_request_id:
         type: string
@@ -28,6 +28,12 @@ schemas:
       entered_address:
         type: string
         minLength: 1
+      entrance_count:
+        type: integer
+        minimum: 1
+      apartment_count:
+        type: integer
+        minimum: 1
       free_text:
         type: string
   Response201:

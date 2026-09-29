@@ -22,10 +22,12 @@ class DraftValidationTests(unittest.TestCase):
     def test_only_known_flows_and_fields_but_partial_payload_is_valid(self) -> None:
         _validate_payload("issue_card", {"title": "Лифт остановился"})
         _validate_payload("resident_request", {"house_id": str(uuid4())})
+        _validate_payload("resident_request", {"name_from_profile": True})
         for kind, payload in (
             ("other", {}),
             ("issue_card", {"bot_token": "secret"}),
             ("resident_request", {"description": "другое действие"}),
+            ("resident_request", {"name_from_profile": "false"}),
         ):
             with self.subTest(kind=kind, payload=payload):
                 with self.assertRaises(DraftError):
@@ -91,6 +93,25 @@ class DraftServiceTests(unittest.IsolatedAsyncioTestCase):
 
 
 class DraftBotTests(unittest.IsolatedAsyncioTestCase):
+    async def test_text_issue_draft_stores_separate_summary(self) -> None:
+        actor = SimpleNamespace(id=uuid4())
+        house_id = uuid4()
+        category = SimpleNamespace(id=uuid4())
+        with (
+            patch("src.bot.handlers.drafts_text._category", new=AsyncMock(return_value=category)),
+            patch(
+                "src.bot.handlers.drafts_text.save_draft",
+                new=AsyncMock(return_value=SimpleNamespace(id=uuid4(), revision=1)),
+            ) as saved,
+        ):
+            await _save_text(
+                SimpleNamespace(), actor,
+                f"issue_card | {house_id} | elevator | all | Лифт | Не работает",
+            )
+        payload = saved.await_args.kwargs["payload"]
+        self.assertEqual(payload["description"], "Не работает")
+        self.assertEqual(payload["summary_description"], "Не работает")
+
     async def test_text_save_resident_uses_shared_draft_service(self) -> None:
         actor = SimpleNamespace(id=uuid4())
         session = SimpleNamespace()
@@ -99,13 +120,26 @@ class DraftBotTests(unittest.IsolatedAsyncioTestCase):
         with patch("src.bot.handlers.drafts_text.save_draft", new=AsyncMock(return_value=row)) as saved:
             result = await _save_text(
                 session, actor,
-                f"resident_request | {house_id} | 2 | 17 | Иванов Иван",
+                f"resident_request | {house_id} | 17 | Иванов Иван",
             )
         self.assertIn(str(row.id), result)
         self.assertEqual(saved.await_args.kwargs["payload"], {
-            "house_id": str(house_id), "entrance_number": 2,
-            "apartment_number": 17, "full_name": "Иванов Иван",
+            "house_id": str(house_id), "apartment_number": 17,
+            "full_name": "Иванов Иван",
         })
+
+    async def test_text_save_resident_accepts_old_entrance_format(self) -> None:
+        actor = SimpleNamespace(id=uuid4())
+        house_id = uuid4()
+        with patch(
+            "src.bot.handlers.drafts_text.save_draft",
+            new=AsyncMock(return_value=SimpleNamespace(id=uuid4(), revision=1)),
+        ) as saved:
+            await _save_text(
+                SimpleNamespace(), actor,
+                f"resident_request | {house_id} | 2 | 17 | Иванов Иван",
+            )
+        self.assertEqual(saved.await_args.kwargs["payload"]["entrance_number"], 2)
 
     async def test_send_issue_marks_then_uses_existing_domain_operation(self) -> None:
         actor = SimpleNamespace(id=uuid4())
@@ -115,6 +149,7 @@ class DraftBotTests(unittest.IsolatedAsyncioTestCase):
             payload={
                 "house_id": str(uuid4()), "category_id": str(uuid4()),
                 "title": "Лифт", "description": "Не работает",
+                "summary_description": "Лифт не работает в доме.",
                 "scope_all_house": True,
             },
         )
@@ -123,6 +158,7 @@ class DraftBotTests(unittest.IsolatedAsyncioTestCase):
             scalars=AsyncMock(return_value=SimpleNamespace(all=lambda: [file_id])),
         )
         order = []
+        create_args = {}
 
         async def mark(*args, **kwargs):
             order.append("mark")
@@ -130,6 +166,7 @@ class DraftBotTests(unittest.IsolatedAsyncioTestCase):
 
         async def create(*args, **kwargs):
             order.append("create")
+            create_args.update(kwargs)
             return SimpleNamespace(id=card_id)
 
         async def attach(*args, **kwargs):
@@ -149,6 +186,8 @@ class DraftBotTests(unittest.IsolatedAsyncioTestCase):
             result = await _send_text(session, actor, draft_id, 3)
         self.assertEqual(order, ["mark", "create", "attach"])
         self.assertIn(str(card_id), result)
+        self.assertEqual(create_args["description"], "Не работает")
+        self.assertEqual(create_args["summary_description"], "Лифт не работает в доме.")
         session.rollback.assert_not_awaited()
 
     async def test_failed_send_rolls_back_draft_marker(self) -> None:

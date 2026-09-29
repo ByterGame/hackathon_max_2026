@@ -17,6 +17,7 @@ class Request(BaseModel):
     decision_note: constr(min_length=1)
     address_key: str | None = None
     entrance_count: conint(ge=1) | None = None
+    apartment_count: conint(ge=1) | None = None
 
 
 class Response200(BaseModel):

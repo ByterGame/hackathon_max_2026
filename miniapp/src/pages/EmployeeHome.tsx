@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 
 import { IssueCard } from "../features/issues/ui/IssueCard";
-import type { House, Issue, IssueStatus } from "../features/issues/types";
+import { formatHouseCounts, type House, type Issue, type IssueStatus } from "../features/issues/types";
+import { formatCount } from "../shared/format_count";
 import { Icon } from "../shared/common_ui/Icon";
 import { ScreenHeader } from "../shared/common_ui/ScreenHeader";
 
@@ -57,7 +58,7 @@ export function EmployeeHome({ houses, issues, onIssue, onAccess, onChangeRole }
         {houses.filter((house) => houseId === "all" || house.id === houseId).map((house) => {
           const houseIssues = visible.filter((item) => item.houseId === house.id).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
           if (!houseIssues.length) return null;
-          return <section className="house-group" key={house.id}><div className="section-heading"><div><h2>{house.address}</h2><p>{houseIssues.length} проблем</p></div><Icon name="building" size={21} /></div><div className="employee-grid">{houseIssues.map((issue) => <IssueCard key={issue.id} issue={issue} onOpen={() => onIssue(issue.id)} />)}</div></section>;
+          return <section className="house-group" key={house.id}><div className="section-heading"><div><h2>{house.address}</h2><p>{formatHouseCounts(house.entranceCount, house.apartmentCount)} · {formatCount(houseIssues.length, ["проблема", "проблемы", "проблем"])}</p></div><Icon name="building" size={21} /></div><div className="employee-grid">{houseIssues.map((issue) => <IssueCard key={issue.id} issue={issue} onOpen={() => onIssue(issue.id)} />)}</div></section>;
         })}
         {!visible.length && <div className="empty-state panel"><Icon name="search" size={30} /><strong>Ничего не найдено</strong><p>Попробуйте другой дом, состояние или запрос.</p></div>}
       </div>

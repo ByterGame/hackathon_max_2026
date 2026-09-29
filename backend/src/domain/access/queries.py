@@ -25,6 +25,7 @@ from src.domain.access.requests import (
     require_request_party,
 )
 from src.domain.access.rules import AccessRuleError, require_verified_phone
+from src.domain.profile import has_confirmed_full_name
 
 
 def _iso(value: datetime | None) -> str | None:
@@ -73,6 +74,8 @@ def request_data(kind: str, row: Any) -> dict[str, Any]:
             ),
             company_id=str(row.company_id) if row.company_id else None,
             entered_address=row.entered_address,
+            entrance_count=row.entrance_count,
+            apartment_count=row.apartment_count,
             resolved_house_id=(
                 str(row.resolved_house_id) if row.resolved_house_id else None
             ),
@@ -259,6 +262,7 @@ async def search_houses(session: AsyncSession, text: str) -> list[dict[str, Any]
             "id": house.id,
             "address_display": house.address_display,
             "entrance_count": house.entrance_count,
+            "apartment_count": house.apartment_count,
         }
         for house in rows
     ]
@@ -386,6 +390,7 @@ async def list_company_houses(
             "id": house.id,
             "address_display": house.address_display,
             "entrance_count": house.entrance_count,
+            "apartment_count": house.apartment_count,
         }
         for house in houses
     ]
@@ -460,7 +465,11 @@ async def list_residents(
             {
                 "grant_id": str(grant.id),
                 "user_id": str(user.id),
-                "full_name": request.submitted_full_name if request else user.full_name,
+                "full_name": (
+                    user.full_name
+                    if has_confirmed_full_name(user)
+                    else request.submitted_full_name if request else user.full_name
+                ),
                 "phone_number": user.phone_number,
                 "house_id": str(house.id),
                 "address_display": house.address_display,

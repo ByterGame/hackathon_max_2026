@@ -10,12 +10,19 @@ PostgreSQL.
 
 Для запуска нужен файл `.env` в корне репозитория. Для нового файла используйте
 `.env.example` как образец; существующий `.env` не перезаписывайте. Обязательны
-`BOT_TOKEN`, `PORT`, все `DB_*` и `FILE_STORAGE_ROOT`. Случайный пароль БД можно получить командой
-`openssl rand -hex 24`. Файл `.env` не должен попадать в Git. `GROQ_API_KEY`
-необязателен; пока `GROQ_SEND_REAL_DATA=0`, тексты жителей во внешний ИИ не
-отправляются, а подсказка формируется локально.
-Если `.env` уже существует на VPS, добавьте в него
-`FILE_STORAGE_ROOT=/data/private_files` перед следующим запуском Compose.
+`BOT_TOKEN`, `PORT`, все `DB_*`, `FILE_STORAGE_ROOT`, `ISSUE_AI_PROVIDER`,
+`GIGACHAT_SEND_REAL_DATA`, `GIGACHAT_SCOPE`, `GIGACHAT_MODEL` и
+`GIGACHAT_AUTH_URL`. Для обязательных параметров Compose не подставляет
+значения по умолчанию. В образце `BOT_TOKEN`, `PORT`, `DB_*` и
+`FILE_STORAGE_ROOT` оставлены пустыми: заполните их явно. Для запуска в
+Compose можно выбрать `PORT=8000`, `DB_HOST=db`, `DB_PORT=5432`,
+`DB_NAME=hackathon`, `DB_USER=hackathon`,
+`FILE_STORAGE_ROOT=/data/private_files` и свой пароль БД. Случайный пароль
+можно получить командой `openssl rand -hex 24`. Файл `.env` не должен попадать
+в Git. Если `.env` уже существует на VPS, дополните его новыми переменными до
+следующего `docker compose up`, не заменяя образцом.
+`GIGACHAT_AUTH_KEY` и `GIGACHAT_CA_BUNDLE` тоже должны присутствовать в файле,
+но до настройки внешнего сервиса их значения можно оставить пустыми.
 
 Сборка и запуск PostgreSQL, миграций, HTTP-сервиса и бота:
 
@@ -29,6 +36,61 @@ docker compose up --build
 Состояние контейнеров и сообщения бота можно посмотреть командами
 `docker compose ps` и `docker compose logs -f bot`. Не запускайте второго
 бота с тем же токеном одновременно.
+
+### Подсказки GigaChat
+
+В образце выбран `ISSUE_AI_PROVIDER=gigachat`, а
+`GIGACHAT_SEND_REAL_DATA=0` и `GIGACHAT_AUTH_KEY` пустой. В таком состоянии
+заявки продолжают создаваться с локальной подсказкой: описание жителя наружу
+не отправляется. Когда получите ключ авторизации GigaChat API и примете
+решение об отправке описаний, укажите в `.env` ключ и явно установите
+`GIGACHAT_SEND_REAL_DATA=1`. До этого момента ключ для запуска не нужен.
+
+`GIGACHAT_SCOPE` должен соответствовать ключу: `GIGACHAT_API_PERS` для
+физического лица, `GIGACHAT_API_B2B` или `GIGACHAT_API_CORP` для организации.
+`GIGACHAT_MODEL` задаёт доступную аккаунту модель; пример использует
+`GigaChat-2-Pro`. `GIGACHAT_AUTH_URL` в образце указывает на актуальный
+`https://api.giga.chat/api/v2/oauth`. Значения сверьте с
+[документацией авторизации GigaChat](https://developers.sber.ru/docs/ru/gigachat/api/reference/rest/gigachat-api)
+и [списком моделей](https://developers.sber.ru/docs/ru/gigachat/guides/selecting-a-model).
+`ISSUE_AI_PROVIDER=local` отключает внешний вызов независимо от наличия ключа.
+Токен доступа GigaChat действует 30 минут по документации провайдера; сервис
+кэширует его в памяти процесса и обновляет незадолго до истечения срока.
+Перед включением передачи реальных обращений проверьте условия использования
+и правила обработки данных. Реальный ключ и вызов GigaChat API на VPS ещё не
+проверены.
+
+Проверка TLS для GigaChat остаётся включённой: необходим доверенный корневой
+сертификат Минцифры по [инструкции GigaChat](https://developers.sber.ru/docs/ru/gigachat/certificates).
+Если его нет в стандартном хранилище контейнера, получите официальный PEM
+по этой инструкции и разместите файл на VPS вне репозитория, например
+`/opt/hackathon/certs/gigachat-ca.pem`. Проверьте файл и соединение на VPS:
+
+```sh
+openssl x509 -in /opt/hackathon/certs/gigachat-ca.pem -noout -subject -issuer -dates
+openssl s_client -connect api.giga.chat:443 -servername api.giga.chat -verify_hostname api.giga.chat -verify_return_error -CAfile /opt/hackathon/certs/gigachat-ca.pem </dev/null
+```
+
+Во второй проверке ожидается `Verify return code: 0 (ok)`. Если для цепочки
+нужен также выпускающий сертификат, используйте PEM-набор с необходимыми
+доверенными сертификатами. Проверку TLS не отключайте.
+Чтобы передать PEM в `app` и `bot` только для чтения, скопируйте на VPS
+`compose.gigachat-ca.example.yaml` в `compose.gigachat-ca.yaml`, затем задайте
+в `.env`:
+
+```dotenv
+GIGACHAT_CA_HOST_PATH=/opt/hackathon/certs/gigachat-ca.pem
+GIGACHAT_CA_BUNDLE=/run/gigachat/ca-bundle.pem
+```
+
+Запускайте оба Compose-файла вместе:
+
+```sh
+docker compose -f compose.yaml -f compose.gigachat-ca.yaml up --build
+```
+
+Без дополнительного сертификата оставьте `GIGACHAT_CA_BUNDLE` и
+`GIGACHAT_CA_HOST_PATH` пустыми и используйте обычный `docker compose up --build`.
 
 При `PORT=8000` интерфейс и проверки доступны по адресам `http://localhost:8000/`,
 `http://localhost:8000/service/health` (работает веб-сервис) и
@@ -78,7 +140,7 @@ MAX администратора, поддержки, представителя
 Новые записи имеют формат JSON: `event` указывает этап, `error_code` — вид
 сбоя, `exception_message` — очищенный текст ошибки, `stack` — место её
 возникновения. `request_id` связывает HTTP-запрос или событие бота с вложенными
-записями, например обращением к Groq. У HTTP-запроса этот ID также возвращается
+записями, например обращением к GigaChat. У HTTP-запроса этот ID также возвращается
 в заголовке `X-Request-ID`. Тексты заявок, номера и ключи намеренно не пишутся
 в логи; при передаче журнала другим людям всё равно проверяйте его содержимое.
 
@@ -90,10 +152,14 @@ MAX администратора, поддержки, представителя
 Загрузка файлов использует отдельный потоковый маршрут; её повторная отправка
 может сохранить второй файл. Допустимые форматы, предел 8 МиБ и проверка прав
 описаны в [контракте вложений](backend/docs/files/README.md). При настройке
-Nginx для этого маршрута нужно разрешить тело запроса не меньше 8 МиБ.
+Nginx на VPS задайте `client_max_body_size 10m;` в блоке `server`, который
+проксирует приложение, и проверьте конфигурацию командой `sudo nginx -t` перед
+`sudo systemctl reload nginx`. Иначе файл допустимого размера может получить
+ответ `413 Request Entity Too Large` до попадания в приложение. Конфигурация
+Nginx хранится на VPS, в этом репозитории её нет.
 
 Для разработки бэкенда вне Docker потребуется отдельный локальный PostgreSQL.
-Значение `DB_HOST=db` из образца работает только внутри Compose: при локальном
+Значение `DB_HOST=db` работает только внутри Compose: при локальном
 запуске задайте адрес этого PostgreSQL в `DB_HOST` и его порт в `DB_PORT`.
 Затем примените миграции и запустите процессы в отдельных терминалах:
 

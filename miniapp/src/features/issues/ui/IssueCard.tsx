@@ -9,7 +9,7 @@ export function IssueCard({ issue, onOpen, compact = false }: { issue: Issue; on
         <span className={`status status--${issue.status}`}>{issue.status === "closed" && issue.closeResult === "solved" ? "Решена" : issueStatusLabels[issue.status]}</span>
       </span>
       <span className="issue-card__meta"><Icon name="pin" size={16} /> {formatIssueScope(issue.scope)}</span>
-      {!compact && <span className="issue-card__description">{issue.description}</span>}
+      {!compact && <span className="issue-card__description">{issue.summaryDescription || issue.description}</span>}
       <span className="issue-card__bottom">
         <span><Icon name="people" size={18} /> Поддержали: <strong>{issue.supportsCount}</strong></span>
         <span>{formatDate(issue.updatedAt)} <Icon name="chevron" size={19} /></span>

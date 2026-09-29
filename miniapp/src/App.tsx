@@ -45,9 +45,13 @@ export function App() {
   const loadSession = useCallback(async () => {
     setAuthLoading(true);
     try { applyAccount(await getCurrentUser()); }
-    catch (reason) { setAuthError(reason instanceof Error ? reason.message : "Не удалось войти через MAX"); }
+    catch (reason) { setAccount(null); setRole(null); setAuthError(reason instanceof Error ? reason.message : "Не удалось войти через MAX"); }
     finally { setAuthLoading(false); }
   }, [applyAccount]);
+
+  const refreshAccount = useCallback(async () => {
+    if (!isDemoMode) setAccount(await getCurrentUser());
+  }, []);
 
   useEffect(() => { if (!isDemoMode) void loadSession(); }, [loadSession]);
 
@@ -126,7 +130,7 @@ export function App() {
         {!isDemoMode && !authLoading && authError && !account && <div className="panel error-state" role="alert">{authError}<button type="button" className="button button--soft" onClick={() => void loadSession()}>Повторить</button></div>}
         {!isDemoMode && !authLoading && account && !account.phone_verified && <PhoneGate busy={authBusy} error={authError} onConfirm={() => void confirmPhone()} />}
         {!isDemoMode && !authLoading && account?.phone_verified && account.kind === "support" && <SupportHome actorId={account.id} />}
-        {!isDemoMode && !authLoading && account?.phone_verified && account.kind === "admin" && <AdminHome />}
+        {!isDemoMode && !authLoading && account?.phone_verified && account.kind === "admin" && <AdminHome currentUserId={account.id} onOwnAccountChanged={() => void loadSession()} />}
         {!isDemoMode && !authLoading && account?.phone_verified && account.kind === "unassigned" && <SupportInvitationNotice onAccepted={async () => applyAccount(await getCurrentUser())} />}
 
         {isDemoMode && !role && screen === "home" && <RoleSelection onContinue={selectDemoRole} onRegister={() => navigate("registration")} />}
@@ -140,13 +144,13 @@ export function App() {
         {role === "resident" && snapshot && screen === "requests" && <MyRequests residentRequests={snapshot.residentRequests} companyRequests={snapshot.companyRequests} houseRequests={snapshot.houseRequests} initialCase={selectedRequest} onBack={() => navigate("home")} onChanged={() => refresh("resident")} />}
         {role === "employee" && snapshot && screen === "home" && <EmployeeHome houses={snapshot.houses} issues={snapshot.issues} onIssue={(id) => void openIssue(id)} onAccess={() => navigate("employee-access")} onChangeRole={isDemoMode ? changeDemoRole : undefined} />}
         {role === "resident" && snapshot && screen === "new" && residentHouse && <IssueComposer house={residentHouse} categories={snapshot.categories} onBack={() => navigate("home")} onOpenIssue={(id) => void openIssue(id)} />}
-        {role === "resident" && snapshot && screen === "access" && <AccessRequest houses={snapshot.houses} requests={snapshot.residentRequests} offers={snapshot.residentOffers} initialName={isDemoMode ? demoResident.name : account?.full_name ?? undefined} onBack={() => navigate("home")} onChanged={() => refresh("resident")} onOpenRequest={(id) => openRequest({ kind: "resident", id })} />}
+        {role === "resident" && snapshot && screen === "access" && <AccessRequest houses={snapshot.houses} requests={snapshot.residentRequests} offers={snapshot.residentOffers} initialName={isDemoMode ? demoResident.name : account?.full_name_confirmed ? account.full_name ?? undefined : undefined} nameConfirmed={isDemoMode || Boolean(account?.full_name_confirmed)} onBack={() => navigate("home")} onChanged={() => refresh("resident")} onAccountChanged={refreshAccount} onOpenRequest={(id) => openRequest({ kind: "resident", id })} />}
         {role === "employee" && snapshot && screen === "employee-access" && <EmployeeAccess houses={companyHouses} requests={snapshot.residentRequests.filter((item) => companyHouseIds.has(item.houseId))} grants={snapshot.residentGrants.filter((item) => companyHouseIds.has(item.houseId))} offers={snapshot.residentOffers.filter((item) => companyHouseIds.has(item.houseId))} staff={snapshot.staffAssignments.filter((item) => item.companyId === activeCompanyId)} houseRequests={snapshot.houseRequests.filter((item) => item.companyId === activeCompanyId)} permissions={staffPermissions} companyId={activeCompanyId} companies={staffMemberships.map((item) => ({ id: item.company_id, name: item.company_name }))} onCompanyChange={setSelectedCompanyId} onBack={() => navigate("home")} onChanged={() => refresh("employee")} />}
         {role && snapshot && screen === "detail" && selectedIssue && selectedHouse && <IssueDetail issue={selectedIssue} house={selectedHouse} role={role} currentUserId={isDemoMode ? demoResident.id : account?.id ?? ""} canManageIssues={role === "resident" || issueStaffPermission} categories={snapshot.categories} relatedIssues={snapshot.issues.filter((item) => item.houseId === selectedIssue.houseId && item.id !== selectedIssue.id && item.status !== "closed")} onBack={() => navigate("home")} onChanged={() => refresh(role)} onMerged={async (id) => { await refresh(role); setSelectedIssueId(id); }} />}
         {role && snapshot && screen === "detail" && (!selectedIssue || !selectedHouse) && <div className="empty-state panel"><strong>Карточка не найдена</strong><button type="button" className="button button--soft" onClick={() => navigate("home")}>Вернуться к списку</button></div>}
       </div>
       {showNav && <nav className="bottom-nav" aria-label="Основная навигация">
-        <button type="button" className="bottom-nav__active" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}><Icon name={role === "resident" ? "home" : "building"} /><span>{role === "resident" ? "Мой дом" : "Панель УК"}</span></button>
+        <button type="button" className="bottom-nav__active" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}><Icon name={role === "resident" ? "home" : "building"} /><span>{role === "resident" ? "Мои дома" : "Панель УК"}</span></button>
         <button type="button" onClick={() => document.getElementById(role === "resident" ? "issues-list" : "employee-issues")?.scrollIntoView({ behavior: "smooth" })}><Icon name="list" /><span>Проблемы</span></button>
         {role === "resident" ? <><button type="button" onClick={() => navigate("new")}><Icon name="plus" /><span>Создать</span></button><button type="button" onClick={() => navigate("access")}><Icon name="key" /><span>Доступ</span></button></> : <><button type="button" onClick={() => navigate("employee-access")}><Icon name="key" /><span>Доступы</span></button>{isDemoMode && <button type="button" onClick={changeDemoRole}><Icon name="user" /><span>Сменить роль</span></button>}</>}
       </nav>}

@@ -8,7 +8,7 @@ from src.gen.issues.internal.issue_data import Card
 
 
 class TargetApartment(BaseModel):
-    entrance_number: conint(ge=1)
+    entrance_number: conint(ge=1) | None = None
     apartment_number: conint(ge=1)
 
 
@@ -17,6 +17,7 @@ class Request(BaseModel):
     expected_version: conint(ge=1)
     category_id: UUID
     title: constr(min_length=1)
+    summary_description: constr(min_length=1, max_length=1500) | None = None
     scope_all_house: bool
     target_entrances: list[conint(ge=1)] | None = None
     target_apartments: list[TargetApartment] | None = None

@@ -9,7 +9,7 @@ class OfferItem(BaseModel):
     id: UUID
     house_id: UUID
     address_display: str
-    entrance_number: int
+    entrance_number: int | None
     apartment_number: int
     phone_number: str
     status: str

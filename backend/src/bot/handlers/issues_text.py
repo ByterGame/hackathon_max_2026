@@ -37,7 +37,7 @@ ISSUE_HELP = (
     "/history UUID_карточки [страница] — история.\n"
     "/newissue UUID_дома | код_категории | область | название | описание — сообщить о проблеме. "
     "/suggest UUID_дома | код_категории | описание — предложить название и дубли. "
-    "Область: all, e:1,2, a:1:12,2:18 или e:1,2+a:3:18.\n"
+    "Область: all, e:1,2, a:12,18 или e:1,2+a:18.\n"
     "/support UUID_карточки | дополнение — поддержать (дополнение необязательно); "
     "/comment UUID_карточки | текст — написать в обсуждение; "
     "/filehelp — прикрепить фото, PDF или видео к карточке либо черновику; "
@@ -109,7 +109,7 @@ def _participant_label(
 ) -> str:
     if actor_id == author_id:
         return "Вы"
-    return "УК" if official else "Житель"
+    return "УК" if official else "Жилец"
 
 
 def _parts(value: str, *, count: int) -> list[str]:
@@ -126,15 +126,15 @@ def _uuid(value: str) -> UUID:
         raise ValueError("Нужен UUID из карточки или списка.") from error
 
 
-def _scope(value: str) -> tuple[bool, list[int], list[tuple[int, int]]]:
+def _scope(value: str) -> tuple[bool, list[int], list[tuple[int | None, int]]]:
     scope = value.strip().lower()
     if scope in {"all", "дом", "весь дом"}:
         return True, [], []
     entrances: set[int] = set()
-    apartments: set[tuple[int, int]] = set()
+    apartments: dict[int, int | None] = {}
     sections = scope.split("+")
     if len(sections) > 2 or len(sections) != len(set(part[:2] for part in sections)):
-        raise ValueError("Область: all, e:1,2, a:1:12 или e:1+a:2:18")
+        raise ValueError("Область: all, e:1,2, a:12 или e:1+a:18")
     for section in sections:
         if section.startswith("e:"):
             try:
@@ -143,21 +143,31 @@ def _scope(value: str) -> tuple[bool, list[int], list[tuple[int, int]]]:
                 raise ValueError("Область подъездов: e:1,2") from error
         elif section.startswith("a:"):
             try:
-                apartments.update(
-                    tuple(map(int, item.strip().split(":")))
-                    for item in section[2:].split(",")
-                )
+                for item in section[2:].split(","):
+                    numbers = [int(part) for part in item.strip().split(":")]
+                    if len(numbers) == 1:
+                        entrance, apartment = None, numbers[0]
+                    elif len(numbers) == 2:
+                        entrance, apartment = numbers
+                    else:
+                        raise ValueError("Неверное число частей")
+                    if apartment <= 0 or (entrance is not None and entrance <= 0):
+                        raise ValueError("Номер не положительный")
+                    previous = apartments.get(apartment)
+                    if previous is not None and entrance is not None and previous != entrance:
+                        raise ValueError("Противоречивые подъезды")
+                    apartments[apartment] = entrance if entrance is not None else previous
             except ValueError as error:
-                raise ValueError("Область квартир: a:1:12,2:18") from error
+                raise ValueError("Область квартир: a:12,18") from error
         else:
-            raise ValueError("Область: all, e:1,2, a:1:12 или e:1+a:2:18")
-    if any(number <= 0 for number in entrances) or any(
-        len(pair) != 2 or min(pair) <= 0 for pair in apartments
-    ):
+            raise ValueError("Область: all, e:1,2, a:12 или e:1+a:18")
+    if any(number <= 0 for number in entrances):
         raise ValueError("Номера подъездов и квартир должны быть положительными")
     if not entrances and not apartments:
         raise ValueError("Укажите хотя бы один подъезд или квартиру")
-    return False, sorted(entrances), sorted(apartments)
+    return False, sorted(entrances), [
+        (entrance, apartment) for apartment, entrance in sorted(apartments.items())
+    ]
 
 
 async def _category(session: AsyncSession, code: str) -> IssueCategory:
@@ -193,7 +203,7 @@ async def _card_text(
             (
                 f"подъезд {target.entrance_number}"
                 if target.entrance_number is not None
-                else f"подъезд {apartment.entrance_number}, квартира {apartment.apartment_number}"
+                else f"квартира {apartment.apartment_number}"
             )
             for target, apartment in targets
             if target.entrance_number is not None or apartment is not None
@@ -218,6 +228,8 @@ async def _card_text(
         f"Категория: {category.name if category else card.category_id}",
         f"Область: {area}; поддержали: {support_count or 0}; версия: {card.version}",
     ]
+    if summary := getattr(card, "summary_description", None):
+        lines.append(f"Краткое формализованное описание: {summary}")
     if card.current_note:
         lines.append(f"Пояснение УК: {card.current_note}")
     if card.close_result:
@@ -333,6 +345,29 @@ async def handle_issue_text(
                 category_id=category_id,
             )
             lines = [f"Предложенное название: {result.suggested_title}"]
+            summary = getattr(result, "summary_description", None)
+            lines.append(
+                "Краткое формализованное описание: "
+                + (summary or description)
+            )
+            if not summary:
+                lines.append(
+                    "Автоматическая сводка недоступна: пока используется исходное описание."
+                )
+            if result.source == "gigachat":
+                lines.append("GigaChat обработал описание и поискал похожие проблемы.")
+                if result.description_check == "warning":
+                    lines.append(
+                        "Стоит уточнить описание: "
+                        + (result.description_warning or "Что именно случилось и где?")
+                    )
+                else:
+                    lines.append("Описание достаточно понятно для подачи заявки.")
+            else:
+                lines.append(
+                    "Нейросеть не использовалась: название взято из первой фразы, "
+                    "а похожие карточки найдены по совпадению слов."
+                )
             if result.similar_card_ids:
                 lines.append("Возможные дубли (проверьте сами):")
                 candidate_titles = {item.id: item.title for item in result.candidates}
@@ -359,6 +394,7 @@ async def handle_issue_text(
                 category_id=category.id,
                 title=title,
                 description=description,
+                summary_description=description,
                 scope_all_house=all_house,
                 target_entrances=entrances,
                 target_apartments=apartments,

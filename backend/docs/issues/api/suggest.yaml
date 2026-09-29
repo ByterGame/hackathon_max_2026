@@ -1,6 +1,6 @@
 path: /issues/suggest
 method: post
-summary: Предложить краткое название проблемы и похожие открытые карточки
+summary: Предложить название, сводное описание и похожие открытые карточки
 requestBody:
   required: true
   content:
@@ -28,13 +28,24 @@ schemas:
       title: {type: string}
   Response200:
     type: object
-    required: [suggested_title, similar_card_ids, candidates, source]
+    required: [suggested_title, summary_description, similar_card_ids, candidates, source, description_check, description_warning]
     properties:
       suggested_title: {type: string}
+      summary_description:
+        type: [string, 'null']
+        maxLength: 500
+        description: Сводное описание от ИИ; null, если модель недоступна.
       similar_card_ids:
         type: array
         items: {type: string, format: uuid}
       candidates:
         type: array
         items: {$ref: '#/schemas/Candidate'}
-      source: {type: string, enum: [groq, local]}
+      source: {type: string, enum: [gigachat, local]}
+      description_check:
+        type: string
+        enum: [ok, warning, not_checked]
+        description: "ИИ не нашёл замечаний, предложил уточнение либо проверка не проводилась. Поле не запрещает создать заявку."
+      description_warning:
+        type: [string, 'null']
+        description: "Короткое необязательное уточнение от ИИ; null при ok и not_checked."

@@ -18,7 +18,7 @@ class OfferItem(BaseModel):
     house_id: UUID
     address_display: str
     apartment_id: UUID
-    entrance_number: int
+    entrance_number: int | None
     apartment_number: int
     status: Status
     proposed_access_until: AwareDatetime | None = None

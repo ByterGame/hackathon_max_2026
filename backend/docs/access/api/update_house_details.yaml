@@ -1,0 +1,31 @@
+path: /access/update_house_details
+method: post
+summary: Поддержка исправляет количество подъездов и квартир подключённого дома
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema:
+        $ref: '#/schemas/Request'
+responses:
+  '200':
+    description: Данные дома обновлены.
+    content:
+      application/json:
+        schema:
+          $ref: '#/schemas/Response200'
+schemas:
+  Request:
+    type: object
+    required: [house_id, entrance_count, apartment_count]
+    properties:
+      house_id: {type: string, format: uuid}
+      entrance_count: {type: integer, minimum: 1}
+      apartment_count: {type: integer, minimum: 1}
+  Response200:
+    type: object
+    required: [id, entrance_count, apartment_count]
+    properties:
+      id: {type: string, format: uuid}
+      entrance_count: {type: integer, minimum: 1}
+      apartment_count: {type: integer, minimum: 1}

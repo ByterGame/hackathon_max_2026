@@ -31,7 +31,10 @@ async def suggest(
         raise_http_issue(error)
     return models.Response200(
         suggested_title=result.suggested_title,
+        summary_description=result.summary_description,
         similar_card_ids=result.similar_card_ids,
         candidates=[models.Candidate(id=item.id, title=item.title) for item in result.candidates],
         source=result.source,
+        description_check=result.description_check,
+        description_warning=result.description_warning,
     )

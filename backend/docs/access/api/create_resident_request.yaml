@@ -17,7 +17,7 @@ responses:
 schemas:
   Request:
     type: object
-    required: [house_id, full_name, entrance_number, apartment_number]
+    required: [house_id, apartment_number]
     properties:
       house_id:
         type: string
@@ -25,6 +25,8 @@ schemas:
       full_name:
         type: string
         minLength: 1
+        maxLength: 255
+        description: "Нужно только для первого явного подтверждения ФИО; позже можно не передавать, а другое значение требует отдельной смены профиля."
       entrance_number:
         type: integer
         minimum: 1

@@ -28,9 +28,12 @@ export interface AccessRequestDetail {
   house_id?: string;
   address_display?: string;
   submitted_full_name?: string;
-  submitted_entrance_number?: number;
+  submitted_entrance_number?: number | null;
   submitted_apartment_number?: number;
   entered_address?: string;
+  entrance_count?: number | null;
+  apartment_count?: number | null;
+  resolved_house_id?: string | null;
   proposed_company_name?: string | null;
   free_text?: string | null;
 }
@@ -78,11 +81,20 @@ export function decideCompanyRegistration(id: string, outcome: "approved" | "rej
   });
 }
 
-export function decideHouseAddition(id: string, outcome: "approved" | "rejected", decisionNote: string, addressKey?: string, entranceCount?: number): Promise<void> {
+export function decideHouseAddition(id: string, outcome: "approved" | "rejected", decisionNote: string, addressKey?: string, entranceCount?: number, apartmentCount?: number): Promise<void> {
   return post("/access/decide_house_request", {
     request_id: id, outcome, decision_note: decisionNote.trim(),
     address_key: outcome === "approved" ? addressKey?.trim() || null : null,
     entrance_count: outcome === "approved" ? entranceCount ?? null : null,
+    apartment_count: outcome === "approved" ? apartmentCount ?? null : null,
+  });
+}
+
+export function updateHouseDetails(houseId: string, entranceCount: number, apartmentCount: number): Promise<void> {
+  return post("/access/update_house_details", {
+    house_id: houseId,
+    entrance_count: entranceCount,
+    apartment_count: apartmentCount,
   });
 }
 
@@ -102,11 +114,10 @@ export function resolveAccessCancellation(kind: AccessRequestKind, id: string, a
   return post("/access/resolve_cancellation", { request_kind: kind, request_id: id, accept });
 }
 
-export function updateResidentAccessRequest(id: string, fullName: string, entrance: number, apartment: number): Promise<void> {
+export function updateResidentAccessRequest(id: string, fullName: string, apartment: number): Promise<void> {
   return post("/access/update_resident_request", {
     request_id: id,
     full_name: fullName.trim(),
-    entrance_number: entrance,
     apartment_number: apartment,
   });
 }

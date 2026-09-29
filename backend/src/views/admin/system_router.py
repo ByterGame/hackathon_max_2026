@@ -1,6 +1,7 @@
 """Administrator-only HTTP interface for the protected system editor."""
 
 from typing import Annotated, Any
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
@@ -12,6 +13,7 @@ from src.db.models import User
 from src.db.session import get_session
 from src.domain.access.rules import AccessRuleError
 from src.domain.admin.system import (
+    cleanup_operation_files,
     system_delete,
     system_get,
     system_list,
@@ -42,6 +44,13 @@ class DeleteBody(BaseModel):
     expected_etag: str = Field(min_length=64, max_length=64)
     reason: str = Field(min_length=5, max_length=2000)
     mode: str
+    expected_preview_hash: str | None = Field(default=None, min_length=64, max_length=64)
+
+
+class CleanupBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    operation_id: UUID
 
 
 async def _fail(session: AsyncSession, error: AccessRuleError) -> None:
@@ -127,7 +136,20 @@ async def delete_row(
 ) -> dict[str, Any]:
     try:
         return await system_delete(
-            session, actor, body.entity, body.id, body.expected_etag, body.reason, body.mode
+            session, actor, body.entity, body.id, body.expected_etag, body.reason, body.mode,
+            body.expected_preview_hash,
         )
+    except AccessRuleError as error:
+        await _fail(session, error)
+
+
+@router.post("/cleanup", dependencies=[Depends(reserve_http_command)])
+async def retry_file_cleanup(
+    body: CleanupBody,
+    actor: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> dict[str, Any]:
+    try:
+        return await cleanup_operation_files(session, actor, body.operation_id)
     except AccessRuleError as error:
         await _fail(session, error)

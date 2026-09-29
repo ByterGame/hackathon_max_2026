@@ -46,9 +46,13 @@ services:
       DB_NAME: "${DB_NAME:?Set DB_NAME in .env}"
       DB_USER: "${DB_USER:?Set DB_USER in .env}"
       DB_PASSWORD: "${DB_PASSWORD:?Set DB_PASSWORD in .env}"
-      GROQ_API_KEY: "${GROQ_API_KEY:-}"
-      GROQ_SEND_REAL_DATA: "${GROQ_SEND_REAL_DATA:-0}"
-      GROQ_MODEL: "${GROQ_MODEL:-openai/gpt-oss-20b}"
+      ISSUE_AI_PROVIDER: "${ISSUE_AI_PROVIDER:?Set ISSUE_AI_PROVIDER in .env}"
+      GIGACHAT_AUTH_KEY: "${GIGACHAT_AUTH_KEY?Set GIGACHAT_AUTH_KEY in .env (empty until configured)}"
+      GIGACHAT_SEND_REAL_DATA: "${GIGACHAT_SEND_REAL_DATA:?Set GIGACHAT_SEND_REAL_DATA in .env}"
+      GIGACHAT_SCOPE: "${GIGACHAT_SCOPE:?Set GIGACHAT_SCOPE in .env}"
+      GIGACHAT_MODEL: "${GIGACHAT_MODEL:?Set GIGACHAT_MODEL in .env}"
+      GIGACHAT_AUTH_URL: "${GIGACHAT_AUTH_URL:?Set GIGACHAT_AUTH_URL in .env}"
+      GIGACHAT_CA_BUNDLE: "${GIGACHAT_CA_BUNDLE?Set GIGACHAT_CA_BUNDLE in .env (empty if unused)}"
       FILE_STORAGE_ROOT: "${FILE_STORAGE_ROOT:?Set FILE_STORAGE_ROOT in .env}"
     volumes:
       - private_files:${FILE_STORAGE_ROOT:?Set FILE_STORAGE_ROOT in .env}
@@ -75,9 +79,13 @@ services:
       DB_NAME: "${DB_NAME:?Set DB_NAME in .env}"
       DB_USER: "${DB_USER:?Set DB_USER in .env}"
       DB_PASSWORD: "${DB_PASSWORD:?Set DB_PASSWORD in .env}"
-      GROQ_API_KEY: "${GROQ_API_KEY:-}"
-      GROQ_SEND_REAL_DATA: "${GROQ_SEND_REAL_DATA:-0}"
-      GROQ_MODEL: "${GROQ_MODEL:-openai/gpt-oss-20b}"
+      ISSUE_AI_PROVIDER: "${ISSUE_AI_PROVIDER:?Set ISSUE_AI_PROVIDER in .env}"
+      GIGACHAT_AUTH_KEY: "${GIGACHAT_AUTH_KEY?Set GIGACHAT_AUTH_KEY in .env (empty until configured)}"
+      GIGACHAT_SEND_REAL_DATA: "${GIGACHAT_SEND_REAL_DATA:?Set GIGACHAT_SEND_REAL_DATA in .env}"
+      GIGACHAT_SCOPE: "${GIGACHAT_SCOPE:?Set GIGACHAT_SCOPE in .env}"
+      GIGACHAT_MODEL: "${GIGACHAT_MODEL:?Set GIGACHAT_MODEL in .env}"
+      GIGACHAT_AUTH_URL: "${GIGACHAT_AUTH_URL:?Set GIGACHAT_AUTH_URL in .env}"
+      GIGACHAT_CA_BUNDLE: "${GIGACHAT_CA_BUNDLE?Set GIGACHAT_CA_BUNDLE in .env (empty if unused)}"
       FILE_STORAGE_ROOT: "${FILE_STORAGE_ROOT:?Set FILE_STORAGE_ROOT in .env}"
     volumes:
       - private_files:${FILE_STORAGE_ROOT:?Set FILE_STORAGE_ROOT in .env}

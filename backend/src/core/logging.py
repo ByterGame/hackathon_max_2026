@@ -45,13 +45,14 @@ _EXTRA_FIELDS = (
 )
 
 _SENSITIVE_ASSIGNMENT = re.compile(
-    r"(?P<prefix>\b(?:authorization|bot_token|db_password|groq_api_key|"
+    r"(?P<prefix>\b(?:authorization|bot_token|db_password|gigachat_auth_key|"
     r"api_key|access_token|token|password|secret|hash|signature|"
     r"init_data|input_value|body)\b[\"']?\s*[:=]\s*[\"']?)"
     r"[^\s,;&}\])\"']+",
     re.IGNORECASE,
 )
 _BEARER_TOKEN = re.compile(r"\bBearer\s+[^\s,;]+", re.IGNORECASE)
+_BASIC_TOKEN = re.compile(r"\bBasic\s+[^\s,;]+", re.IGNORECASE)
 _URL = re.compile(r"https?://[^\s\]\[<>()\"']+", re.IGNORECASE)
 _RUSSIAN_PHONE = re.compile(r"(?<!\d)(?:\+?7|8)(?:[\s()\-]*\d){10}(?!\d)")
 _SQLSTATE = re.compile(r"[0-9A-Z]{5}\Z")
@@ -65,10 +66,11 @@ current_request_id: ContextVar[str | None] = ContextVar(
 def _redact_known_secrets(message: str) -> str:
     message = _URL.sub("[URL]", message)
     message = _BEARER_TOKEN.sub("Bearer [REDACTED]", message)
+    message = _BASIC_TOKEN.sub("Basic [REDACTED]", message)
     message = _SENSITIVE_ASSIGNMENT.sub(
         lambda match: match.group("prefix") + "[REDACTED]", message
     )
-    for name in ("BOT_TOKEN", "DB_PASSWORD", "GROQ_API_KEY"):
+    for name in ("BOT_TOKEN", "DB_PASSWORD", "GIGACHAT_AUTH_KEY"):
         secret = os.getenv(name)
         if secret and len(secret) >= 8:
             message = message.replace(secret, "[REDACTED]")

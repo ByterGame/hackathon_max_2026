@@ -35,3 +35,5 @@ schemas:
         type: string
       entrance_count:
         type: integer
+      apartment_count:
+        type: integer

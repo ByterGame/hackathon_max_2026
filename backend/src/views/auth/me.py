@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.common.auth import get_current_user
 from src.db.models import Company, StaffAssignment as StaffRow, User
 from src.db.session import get_session
+from src.domain.profile import has_confirmed_full_name
 from src.gen.auth.api import me as models
 
 
@@ -32,6 +33,7 @@ async def me(
         id=actor.id,
         kind=actor.kind,
         full_name=actor.full_name,
+        full_name_confirmed=has_confirmed_full_name(actor),
         phone_number=actor.phone_number,
         phone_verified=actor.phone_verified_at is not None,
         staff_assignments=[
