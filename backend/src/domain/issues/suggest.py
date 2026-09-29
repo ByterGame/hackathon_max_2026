@@ -1,8 +1,10 @@
 """Optional issue-title and duplicate suggestions; never mutates an issue."""
 
 import json
+import logging
 import os
 import re
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
@@ -11,6 +13,7 @@ import aiohttp
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.logging import safe_exception_message
 from src.db.models import Apartment, House, IssueCard, IssueCategory, IssueTarget, ResidentGrant, User
 
 from .rules import can_view_issue
@@ -22,6 +25,7 @@ DEFAULT_GROQ_MODEL = "openai/gpt-oss-20b"
 MAX_RECENT_CARDS = 300
 MAX_CANDIDATES = 30
 MAX_SUGGESTED_DUPLICATES = 5
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -278,6 +282,13 @@ async def _groq_suggestion(
             "json_schema": {"name": "issue_suggestion", "strict": True, "schema": response_schema},
         },
     }
+    started = time.monotonic()
+    logger.info(
+        "issue_suggestion_groq",
+        extra={"event": "issue_suggestion_groq", "phase": "attempt", "result": "started"},
+    )
+    content = None
+    response_status = None
     try:
         timeout = aiohttp.ClientTimeout(total=6)
         async with aiohttp.ClientSession(timeout=timeout) as client:
@@ -286,15 +297,96 @@ async def _groq_suggestion(
                 headers={"Authorization": f"Bearer {api_key}"},
                 json=request,
             ) as response:
+                response_status = response.status
                 if response.status != 200:
+                    logger.warning(
+                        "issue_suggestion_groq",
+                        extra={
+                            "event": "issue_suggestion_groq",
+                            "phase": "complete",
+                            "result": "fallback",
+                            "error_code": "http_status",
+                            "status_code": response.status,
+                            "duration_ms": round(
+                                (time.monotonic() - started) * 1000, 2
+                            ),
+                        },
+                    )
                     return None
                 data = await response.json()
         content = data["choices"][0]["message"]["content"]
         if not isinstance(content, str):
-            return None
-        return _validate_provider_payload(json.loads(content), {item.id for item in candidates})
-    except (aiohttp.ClientError, TimeoutError, ValueError, TypeError, KeyError, IndexError):
+            result = None
+        else:
+            result = _validate_provider_payload(
+                json.loads(content), {item.id for item in candidates}
+            )
+    except (
+        aiohttp.ClientError,
+        TimeoutError,
+        ValueError,
+        TypeError,
+        KeyError,
+        IndexError,
+    ) as error:
+        status = getattr(error, "status", None) or response_status
+        logger.warning(
+            "issue_suggestion_groq",
+            extra={
+                "event": "issue_suggestion_groq",
+                "phase": "complete",
+                "result": "fallback",
+                "error_code": (
+                    "timeout" if isinstance(error, TimeoutError)
+                    else "request_error" if isinstance(error, aiohttp.ClientError)
+                    else "invalid_response"
+                ),
+                "status_code": (
+                    status if isinstance(status, int) and 100 <= status <= 599 else None
+                ),
+                "exception_type": type(error).__name__,
+                "exception_message": safe_exception_message(
+                    error,
+                    sensitive_values=(
+                        description,
+                        api_key,
+                        category_name or "",
+                        request["messages"][0]["content"],
+                        request["messages"][1]["content"],
+                        content if isinstance(content, str) else "",
+                        *(item.title for item in candidates),
+                    ),
+                ),
+                "duration_ms": round((time.monotonic() - started) * 1000, 2),
+            },
+        )
         return None
+
+    if result is None:
+        logger.warning(
+            "issue_suggestion_groq",
+            extra={
+                "event": "issue_suggestion_groq",
+                "phase": "complete",
+                "result": "fallback",
+                "error_code": "invalid_response",
+                "status_code": response_status,
+                "duration_ms": round((time.monotonic() - started) * 1000, 2),
+            },
+        )
+        return None
+
+    logger.info(
+        "issue_suggestion_groq",
+        extra={
+            "event": "issue_suggestion_groq",
+            "phase": "complete",
+            "result": "success",
+            "status_code": 200,
+            "duration_ms": round((time.monotonic() - started) * 1000, 2),
+        },
+    )
+    return result
 
 
 async def suggest_issue(
@@ -313,7 +405,9 @@ async def suggest_issue(
         session, actor, house_id, normalized_description, category_id
     )
     key = os.getenv("GROQ_API_KEY", "").strip()
-    if os.getenv("GROQ_SEND_REAL_DATA") == "1" and key:
+    outbound_enabled = os.getenv("GROQ_SEND_REAL_DATA") == "1"
+    fallback_reason = "outbound_disabled" if not outbound_enabled else "missing_api_key"
+    if outbound_enabled and key:
         result = await _groq_suggestion(
             api_key=key,
             model=os.getenv("GROQ_MODEL", DEFAULT_GROQ_MODEL),
@@ -324,10 +418,32 @@ async def suggest_issue(
         if result is not None:
             title, ids = result
             return Suggestion(title, ids, candidates, "groq")
+        fallback_reason = "provider_unavailable"
 
-    return Suggestion(
+    started = time.monotonic()
+    logger.info(
+        "issue_suggestion_local",
+        extra={
+            "event": "issue_suggestion_local",
+            "phase": "attempt",
+            "result": "started",
+            "error_code": fallback_reason,
+        },
+    )
+    suggestion = Suggestion(
         local_title(normalized_description),
         local_similar_ids(normalized_description, candidates),
         candidates,
         "local",
     )
+    logger.info(
+        "issue_suggestion_local",
+        extra={
+            "event": "issue_suggestion_local",
+            "phase": "complete",
+            "result": "success",
+            "error_code": fallback_reason,
+            "duration_ms": round((time.monotonic() - started) * 1000, 2),
+        },
+    )
+    return suggestion

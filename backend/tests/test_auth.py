@@ -49,7 +49,7 @@ class MaxAuthenticationTests(unittest.TestCase):
         signature = hmac.new(self.TOKEN.encode(), text.encode(), hashlib.sha256).hexdigest()
         self.assertEqual(
             validate_contact(
-                phone="+7 (999) 123-45-67",
+                phone="+79991234567",
                 auth_date=str(self.NOW),
                 signature=signature,
                 max_user_id="123",
@@ -58,6 +58,39 @@ class MaxAuthenticationTests(unittest.TestCase):
             ),
             "79991234567",
         )
+
+    def test_contact_signature_uses_original_phone_without_plus(self) -> None:
+        phone = "8 (999) 123-45-67"
+        text = f"authDate={self.NOW}\nphone={phone}\nuserId=123"
+        signature = hmac.new(self.TOKEN.encode(), text.encode(), hashlib.sha256).hexdigest()
+        self.assertEqual(
+            validate_contact(
+                phone=phone,
+                auth_date=str(self.NOW),
+                signature=signature,
+                max_user_id="123",
+                bot_token=self.TOKEN,
+                now=self.NOW,
+            ),
+            "79991234567",
+        )
+
+    def test_contact_millisecond_timestamp_keeps_original_signed_value(self) -> None:
+        auth_date = str(self.NOW * 1000 + 123)
+        text = f"authDate={auth_date}\nphone=79991234567\nuserId=123"
+        signature = hmac.new(self.TOKEN.encode(), text.encode(), hashlib.sha256).hexdigest()
+        kwargs = dict(
+            phone="+79991234567",
+            auth_date=auth_date,
+            signature=signature,
+            max_user_id="123",
+            bot_token=self.TOKEN,
+        )
+        self.assertEqual(validate_contact(**kwargs, now=self.NOW), "79991234567")
+        with self.assertRaisesRegex(ValueError, "Expired MAX contact data"):
+            validate_contact(**kwargs, now=self.NOW + 3601)
+        with self.assertRaisesRegex(ValueError, "Invalid MAX contact signature"):
+            validate_contact(**(kwargs | {"signature": "0" * 64}), now=self.NOW)
 
     def test_bot_contact_requires_signed_own_vcard(self) -> None:
         vcard = "BEGIN:VCARD\r\nTEL;TYPE=cell:79991234567\r\nEND:VCARD\r\n"

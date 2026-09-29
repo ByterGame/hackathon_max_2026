@@ -3,6 +3,7 @@
 import hashlib
 import hmac
 import json
+import logging
 import re
 import time
 from datetime import UTC, datetime
@@ -10,18 +11,20 @@ from typing import Annotated
 from urllib.parse import parse_qsl
 from uuid import uuid4
 
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import load_bot_token
+from src.core.logging import safe_exception_message
 from src.db.models import User
 from src.db.session import get_session
 
 
 MAX_AUTH_MAX_AGE_SECONDS = 3600
 MAX_AUTH_FUTURE_SKEW_SECONDS = 300
+logger = logging.getLogger(__name__)
 
 
 def _is_fresh(value: str, *, now: int | None = None) -> bool:
@@ -31,6 +34,21 @@ def _is_fresh(value: str, *, now: int | None = None) -> bool:
         return False
     current = int(time.time()) if now is None else now
     return current - MAX_AUTH_MAX_AGE_SECONDS <= issued_at <= current + MAX_AUTH_FUTURE_SKEW_SECONDS
+
+
+def _is_contact_fresh(value: str, *, now: int | None = None) -> bool:
+    """Accept MAX contact timestamps in seconds or milliseconds since epoch."""
+    if not isinstance(value, str) or not re.fullmatch(r"[0-9]{10}|[0-9]{13}", value):
+        return False
+    if len(value) == 10:
+        return _is_fresh(value, now=now)
+    current = int(time.time()) if now is None else now
+    issued_at_ms = int(value)
+    return (
+        (current - MAX_AUTH_MAX_AGE_SECONDS) * 1000
+        <= issued_at_ms
+        <= (current + MAX_AUTH_FUTURE_SKEW_SECONDS) * 1000
+    )
 
 
 def validate_init_data(raw: str, bot_token: str, *, now: int | None = None) -> dict:
@@ -88,10 +106,28 @@ def validate_contact(
     now: int | None = None,
 ) -> str:
     """Verify a MAX Bridge requestContact() response and return normalized phone."""
-    if not _is_fresh(auth_date, now=now):
+    if not _is_contact_fresh(auth_date, now=now):
+        age_seconds = None
+        if isinstance(auth_date, str) and re.fullmatch(
+            r"[0-9]{10}|[0-9]{13}", auth_date
+        ):
+            issued_at = int(auth_date) / (1000 if len(auth_date) == 13 else 1)
+            age_seconds = round((time.time() if now is None else now) - issued_at)
+        logger.info(
+            "max_contact_rejected",
+            extra={
+                "event": "max_contact_rejected",
+                "error_code": "expired_max_contact_data",
+                "timestamp_length": (
+                    len(auth_date) if isinstance(auth_date, str) else None
+                ),
+                "age_seconds": age_seconds,
+            },
+        )
         raise ValueError("Expired MAX contact data")
     normalized = normalize_phone_number(phone)
-    signed_text = f"authDate={auth_date}\nphone={normalized}\nuserId={max_user_id}"
+    signed_phone = phone.replace("+", "")
+    signed_text = f"authDate={auth_date}\nphone={signed_phone}\nuserId={max_user_id}"
     expected = hmac.new(
         bot_token.encode("utf-8"), signed_text.encode("utf-8"), hashlib.sha256
     ).hexdigest()
@@ -196,14 +232,22 @@ async def link_verified_phone(
 
 
 async def get_current_user(
+    request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
     init_data: Annotated[str | None, Header(alias="X-Max-Init-Data")] = None,
 ) -> User:
     if init_data is None:
+        request.state.error_code = "max_launch_data_required"
+        request.state.exception_message = "MAX launch data required"
         raise HTTPException(status_code=401, detail="MAX launch data required")
     try:
         profile = validate_init_data(init_data, load_bot_token())
     except ValueError as error:
+        request.state.error_code = {
+            "Expired MAX launch data": "expired_max_launch_data",
+            "Invalid MAX launch signature": "invalid_max_launch_signature",
+        }.get(str(error), "invalid_max_launch_data")
+        request.state.exception_message = safe_exception_message(error)
         raise HTTPException(status_code=401, detail=str(error)) from error
     full_name = " ".join(
         part for part in (profile.get("first_name"), profile.get("last_name")) if part
