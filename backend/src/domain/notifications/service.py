@@ -1,6 +1,7 @@
 """Notification fan-out with current-rights checks and per-subject bot mutes."""
 
 import asyncio
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
@@ -9,6 +10,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.logging import safe_exception_message
 from src.db.models import (
     Apartment,
     BotMute,
@@ -24,8 +26,8 @@ from src.db.models import (
     StaffAssignment,
     User,
 )
-from src.domain.access.requests import load_request, require_request_party
 from src.domain.access.common import require_staff
+from src.domain.access.requests import load_request, require_request_party
 from src.domain.access.rules import AccessRuleError
 from src.domain.issues.service import IssueError, get_visible_card, resolve_card
 
@@ -34,6 +36,19 @@ class NotificationError(Exception):
     def __init__(self, status_code: int, message: str):
         super().__init__(message)
         self.status_code = status_code
+
+
+@dataclass
+class BotDeliveryStats:
+    """Outcomes of one bot delivery batch, without notification contents."""
+
+    processed: int = 0
+    sent: int = 0
+    failed: int = 0
+    blocked: int = 0
+    muted: int = 0
+    failure_types: dict[str, int] = field(default_factory=dict)
+    failure_messages: dict[str, str] = field(default_factory=dict)
 
 
 REQUEST_KINDS = {
@@ -380,7 +395,7 @@ async def expand_outbox_once(session: AsyncSession, *, limit: int = 20) -> int:
 
 async def deliver_bot_notifications_once(
     session: AsyncSession, bot: Bot, *, limit: int = 10
-) -> int:
+) -> BotDeliveryStats:
     """Send generic notices only after rechecking rights immediately before send."""
     now = _now()
     rows = (
@@ -398,39 +413,55 @@ async def deliver_bot_notifications_once(
             .with_for_update(skip_locked=True)
         )
     ).all()
+    stats = BotDeliveryStats(processed=len(rows))
     for notification in rows:
         user = await session.get(User, notification.recipient_user_id)
         if user is None or not await can_view_subject(
             session, user, notification.subject_kind, notification.subject_id
         ):
             notification.bot_state = "blocked"
+            stats.blocked += 1
             continue
         if await is_muted(
             session, user.id, notification.subject_kind, notification.subject_id
         ):
             notification.bot_state = "muted"
+            stats.muted += 1
             continue
         if user.max_user_id is None:
             notification.bot_state = "blocked"
+            stats.blocked += 1
             continue
         try:
             max_user_id = int(user.max_user_id)
             await asyncio.wait_for(
                 bot.send_message(
                     user_id=max_user_id,
-                    text="Есть обновление обращения. Откройте мини-приложение MAX, чтобы посмотреть детали.",
+                    text=(
+                        "Есть обновление обращения. Откройте раздел «Уведомления» "
+                        "в боте или мини-приложении MAX, чтобы посмотреть детали."
+                    ),
                 ),
                 timeout=10,
             )
             notification.bot_state = "sent"
             notification.bot_sent_at = _now()
             notification.last_error = None
+            stats.sent += 1
         except Exception as error:
             notification.bot_state = "failed"
             notification.bot_attempts += 1
             wait_seconds = min(24 * 3600, 30 * (2 ** min(notification.bot_attempts, 10)))
             notification.next_bot_attempt_at = _now() + timedelta(seconds=wait_seconds)
-            notification.last_error = type(error).__name__
+            exception_type = type(error).__name__
+            notification.last_error = exception_type
+            stats.failed += 1
+            stats.failure_types[exception_type] = (
+                stats.failure_types.get(exception_type, 0) + 1
+            )
+            stats.failure_messages.setdefault(
+                exception_type, safe_exception_message(error)
+            )
     if rows:
         await session.commit()
-    return len(rows)
+    return stats
