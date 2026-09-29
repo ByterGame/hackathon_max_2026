@@ -58,10 +58,10 @@ def upgrade() -> None:
         "apartments", "entrance_number", schema="housing", existing_type=sa.Integer(), nullable=True
     )
     op.drop_constraint(
-        "ck_apartments_entrance_number_positive", "apartments", schema="housing", type_="check"
+        op.f("ck_apartments_entrance_number_positive"), "apartments", schema="housing", type_="check"
     )
     op.create_check_constraint(
-        "ck_apartments_entrance_number_positive",
+        op.f("ck_apartments_entrance_number_positive"),
         "apartments",
         "entrance_number IS NULL OR entrance_number > 0",
         schema="housing",
@@ -81,13 +81,13 @@ def upgrade() -> None:
         nullable=True,
     )
     op.drop_constraint(
-        "ck_resident_requests_entrance_number_positive",
+        op.f("ck_resident_requests_entrance_number_positive"),
         "resident_requests",
         schema="access",
         type_="check",
     )
     op.create_check_constraint(
-        "ck_resident_requests_entrance_number_positive",
+        op.f("ck_resident_requests_entrance_number_positive"),
         "resident_requests",
         "submitted_entrance_number IS NULL OR submitted_entrance_number > 0",
         schema="access",
@@ -124,7 +124,7 @@ def downgrade() -> None:
         "uq_resident_requests_active_location", table_name="resident_requests", schema="access"
     )
     op.drop_constraint(
-        "ck_resident_requests_entrance_number_positive",
+        op.f("ck_resident_requests_entrance_number_positive"),
         "resident_requests",
         schema="access",
         type_="check",
@@ -137,7 +137,7 @@ def downgrade() -> None:
         nullable=False,
     )
     op.create_check_constraint(
-        "ck_resident_requests_entrance_number_positive",
+        op.f("ck_resident_requests_entrance_number_positive"),
         "resident_requests",
         "submitted_entrance_number > 0",
         schema="access",
@@ -155,13 +155,13 @@ def downgrade() -> None:
         "uq_apartment_location", "apartments", schema="housing", type_="unique"
     )
     op.drop_constraint(
-        "ck_apartments_entrance_number_positive", "apartments", schema="housing", type_="check"
+        op.f("ck_apartments_entrance_number_positive"), "apartments", schema="housing", type_="check"
     )
     op.alter_column(
         "apartments", "entrance_number", schema="housing", existing_type=sa.Integer(), nullable=False
     )
     op.create_check_constraint(
-        "ck_apartments_entrance_number_positive",
+        op.f("ck_apartments_entrance_number_positive"),
         "apartments",
         "entrance_number > 0",
         schema="housing",

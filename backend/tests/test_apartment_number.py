@@ -2,13 +2,16 @@
 
 import unittest
 from importlib import import_module
+from io import StringIO
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
+from alembic.operations import Operations
+from alembic.runtime.migration import MigrationContext
 from sqlalchemy.dialects import postgresql
 
-from src.db.models import Apartment
+from src.db.models import Apartment, Base
 from src.domain.access.resident import _get_or_create_apartment as access_apartment
 from src.domain.access.rules import AccessRuleError
 from src.domain.issues.rules import can_view_issue
@@ -109,6 +112,44 @@ class ApartmentContractTests(unittest.TestCase):
                     with self.assertRaisesRegex(RuntimeError, "multiple"):
                         migration.upgrade()
                     drop_constraint.assert_not_called()
+
+    def test_migration_uses_existing_check_constraint_names(self):
+        migration = import_module(
+            "src.db.migrations.versions.20260930_006_apartment_numbers"
+        )
+        for direction in ("upgrade", "downgrade"):
+            with self.subTest(direction=direction):
+                output = StringIO()
+                context = MigrationContext.configure(
+                    dialect_name="postgresql",
+                    opts={
+                        "as_sql": True,
+                        "output_buffer": output,
+                        "target_metadata": Base.metadata,
+                    },
+                )
+                operations = Operations(context)
+                bind = MagicMock()
+                bind.execute.return_value.first.return_value = None
+                bind.execute.return_value.scalar_one_or_none.return_value = None
+                with (
+                    patch.object(migration, "op", operations),
+                    patch.object(operations, "get_bind", return_value=bind),
+                ):
+                    getattr(migration, direction)()
+                sql = output.getvalue()
+                for schema, table, name in (
+                    ("housing", "apartments", "ck_apartments_entrance_number_positive"),
+                    ("access", "resident_requests", "ck_resident_requests_entrance_number_positive"),
+                ):
+                    self.assertIn(
+                        f"ALTER TABLE {schema}.{table} DROP CONSTRAINT {name};", sql
+                    )
+                    self.assertIn(
+                        f"ALTER TABLE {schema}.{table} ADD CONSTRAINT {name} CHECK", sql
+                    )
+                self.assertNotIn("ck_apartments_ck_apartments", sql)
+                self.assertNotIn("ck_resident_requests_ck_resident_requests", sql)
 
 
 class ApartmentLookupTests(unittest.IsolatedAsyncioTestCase):
