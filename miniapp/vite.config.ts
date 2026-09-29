@@ -6,7 +6,12 @@ export default defineConfig({
   server: {
     host: "0.0.0.0",
     proxy: {
-      "/api": "http://127.0.0.1:8000",
+      "/auth": "http://127.0.0.1:8000",
+      "/access": "http://127.0.0.1:8000",
+      "/issues": "http://127.0.0.1:8000",
+      "/notifications": "http://127.0.0.1:8000",
+      "/drafts": "http://127.0.0.1:8000",
+      "/files": "http://127.0.0.1:8000",
       "/images": "http://127.0.0.1:8000",
       "/media": "http://127.0.0.1:8000",
     },
