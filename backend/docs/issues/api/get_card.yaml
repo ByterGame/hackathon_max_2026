@@ -1,0 +1,32 @@
+path: /issues/get_card
+method: get
+summary: Карточка проблемы с историей
+parameters:
+  - name: card_id
+    in: query
+    required: true
+    schema: {type: string, format: uuid}
+responses:
+  '200':
+    description: Доступная пользователю карточка.
+    content:
+      application/json:
+        schema: {$ref: '#/schemas/Response200'}
+schemas:
+  Response200:
+    type: object
+    required: [card, targets, reports, messages, history]
+    properties:
+      card: {$ref: '../internal/issue_data.yaml#/schemas/Card'}
+      targets:
+        type: array
+        items: {$ref: '../internal/issue_data.yaml#/schemas/Target'}
+      reports:
+        type: array
+        items: {$ref: '../internal/issue_data.yaml#/schemas/Report'}
+      messages:
+        type: array
+        items: {$ref: '../internal/issue_data.yaml#/schemas/Message'}
+      history:
+        type: array
+        items: {$ref: '../internal/issue_data.yaml#/schemas/HistoryEvent'}

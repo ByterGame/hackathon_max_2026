@@ -1,0 +1,31 @@
+path: /auth/me
+method: get
+summary: Текущий аккаунт MAX
+responses:
+  '200':
+    description: Данные текущего аккаунта.
+    content:
+      application/json:
+        schema: {$ref: '#/schemas/Response200'}
+schemas:
+  Response200:
+    type: object
+    required: [id, kind, phone_verified, staff_assignments]
+    properties:
+      id: {type: string, format: uuid}
+      kind: {type: string}
+      full_name: {type: string}
+      phone_number: {type: string}
+      phone_verified: {type: boolean}
+      staff_assignments:
+        type: array
+        items: {$ref: '#/schemas/StaffAssignment'}
+  StaffAssignment:
+    type: object
+    required: [company_id, company_name, can_manage_staff, can_manage_residents, can_manage_issues]
+    properties:
+      company_id: {type: string, format: uuid}
+      company_name: {type: string}
+      can_manage_staff: {type: boolean}
+      can_manage_residents: {type: boolean}
+      can_manage_issues: {type: boolean}

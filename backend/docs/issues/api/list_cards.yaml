@@ -1,0 +1,26 @@
+path: /issues/list_cards
+method: get
+summary: Карточки проблем дома
+parameters:
+  - name: house_id
+    in: query
+    required: true
+    schema: {type: string, format: uuid}
+  - name: include_closed
+    in: query
+    required: false
+    schema: {type: boolean, default: false}
+responses:
+  '200':
+    description: Карточки, видимые пользователю.
+    content:
+      application/json:
+        schema: {$ref: '#/schemas/Response200'}
+schemas:
+  Response200:
+    type: object
+    required: [cards]
+    properties:
+      cards:
+        type: array
+        items: {$ref: '../internal/issue_data.yaml#/schemas/Card'}

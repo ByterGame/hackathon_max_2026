@@ -1,0 +1,28 @@
+path: /notifications/list
+method: get
+summary: Мои доступные уведомления
+responses:
+  '200':
+    description: Только уведомления по объектам, которые пользователь может видеть сейчас.
+    content:
+      application/json:
+        schema: {$ref: '#/schemas/Response200'}
+schemas:
+  Item:
+    type: object
+    required: [id, subject_kind, subject_id, event_kind, created_at, bot_state]
+    properties:
+      id: {type: string, format: uuid}
+      subject_kind: {type: string}
+      subject_id: {type: string, format: uuid}
+      event_kind: {type: string}
+      created_at: {type: string, format: date-time}
+      read_at: {type: string, format: date-time}
+      bot_state: {type: string}
+  Response200:
+    type: object
+    required: [items]
+    properties:
+      items:
+        type: array
+        items: {$ref: '#/schemas/Item'}

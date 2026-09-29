@@ -1,0 +1,44 @@
+path: /access/change_resident_grant
+method: post
+summary: Продлить или отозвать доступ
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema:
+        $ref: '#/schemas/Request'
+responses:
+  '200':
+    description: Действие выполнено.
+    content:
+      application/json:
+        schema:
+          $ref: '#/schemas/Response200'
+schemas:
+  Request:
+    type: object
+    required: [grant_id, action]
+    properties:
+      grant_id:
+        type: string
+        format: uuid
+      action:
+        type: string
+        enum: [extend, revoke]
+      valid_to:
+        type: string
+        format: date-time
+      reason:
+        type: string
+  Response200:
+    type: object
+    required: [id, status]
+    properties:
+      id:
+        type: string
+        format: uuid
+      status:
+        type: string
+      related_id:
+        type: string
+        format: uuid

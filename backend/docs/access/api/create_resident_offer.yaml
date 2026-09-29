@@ -1,0 +1,48 @@
+path: /access/create_resident_offer
+method: post
+summary: Предложить жителю доступ
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema:
+        $ref: '#/schemas/Request'
+responses:
+  '201':
+    description: Действие выполнено.
+    content:
+      application/json:
+        schema:
+          $ref: '#/schemas/Response201'
+schemas:
+  Request:
+    type: object
+    required: [house_id, entrance_number, apartment_number, phone_number]
+    properties:
+      house_id:
+        type: string
+        format: uuid
+      entrance_number:
+        type: integer
+        minimum: 1
+      apartment_number:
+        type: integer
+        minimum: 1
+      phone_number:
+        type: string
+        minLength: 1
+      valid_to:
+        type: string
+        format: date-time
+  Response201:
+    type: object
+    required: [id, status]
+    properties:
+      id:
+        type: string
+        format: uuid
+      status:
+        type: string
+      related_id:
+        type: string
+        format: uuid

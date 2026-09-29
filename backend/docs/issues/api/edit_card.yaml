@@ -1,0 +1,41 @@
+path: /issues/edit_card
+method: post
+summary: Изменить сводку и область проблемы от имени УК
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema: {$ref: '#/schemas/Request'}
+responses:
+  '200':
+    description: Сводная карточка изменена; исходные обращения сохранены.
+    content:
+      application/json:
+        schema: {$ref: '#/schemas/Response200'}
+schemas:
+  TargetApartment:
+    type: object
+    required: [entrance_number, apartment_number]
+    properties:
+      entrance_number: {type: integer, minimum: 1}
+      apartment_number: {type: integer, minimum: 1}
+  Request:
+    type: object
+    required: [card_id, expected_version, category_id, title, scope_all_house]
+    properties:
+      card_id: {type: string, format: uuid}
+      expected_version: {type: integer, minimum: 1}
+      category_id: {type: string, format: uuid}
+      title: {type: string, minLength: 1}
+      scope_all_house: {type: boolean}
+      target_entrances:
+        type: array
+        items: {type: integer, minimum: 1}
+      target_apartments:
+        type: array
+        items: {$ref: '#/schemas/TargetApartment'}
+  Response200:
+    type: object
+    required: [card]
+    properties:
+      card: {$ref: '../internal/issue_data.yaml#/schemas/Card'}

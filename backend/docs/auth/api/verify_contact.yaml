@@ -1,0 +1,29 @@
+path: /auth/verify_contact
+method: post
+summary: Подтвердить телефон через MAX Bridge
+description: Проверяет подпись результата requestContact() для текущего пользователя MAX.
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema: {$ref: '#/schemas/Request'}
+responses:
+  '200':
+    description: Телефон подтверждён и ожидавшие назначения сотрудника привязаны.
+    content:
+      application/json:
+        schema: {$ref: '#/schemas/Response200'}
+schemas:
+  Request:
+    type: object
+    required: [phone, auth_date, signature]
+    properties:
+      phone: {type: string, minLength: 1}
+      auth_date: {type: string, minLength: 1}
+      signature: {type: string, minLength: 1}
+  Response200:
+    type: object
+    required: [phone_number, kind]
+    properties:
+      phone_number: {type: string}
+      kind: {type: string}

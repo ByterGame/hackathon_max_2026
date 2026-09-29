@@ -1,0 +1,27 @@
+path: /issues/support_card
+method: post
+summary: Поддержать существующую проблему
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema: {$ref: '#/schemas/Request'}
+responses:
+  '200':
+    description: Поддержка учтена один раз.
+    content:
+      application/json:
+        schema: {$ref: '#/schemas/Response200'}
+schemas:
+  Request:
+    type: object
+    required: [card_id]
+    properties:
+      card_id: {type: string, format: uuid}
+      description: {type: string}
+  Response200:
+    type: object
+    required: [card]
+    properties:
+      card: {$ref: '../internal/issue_data.yaml#/schemas/Card'}
+      report_id: {type: string, format: uuid, nullable: true}

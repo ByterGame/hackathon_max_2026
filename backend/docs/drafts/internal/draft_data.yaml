@@ -1,0 +1,18 @@
+schemas:
+  FlowKind:
+    type: string
+    enum: [issue_card, resident_request]
+  DraftData:
+    type: object
+    required: [id, flow_kind, payload, revision, created_at, updated_at]
+    properties:
+      id: {type: string, format: uuid}
+      flow_kind: {$ref: '#/schemas/FlowKind'}
+      payload:
+        type: object
+        additionalProperties: true
+      revision: {type: integer, minimum: 1}
+      created_at: {type: string, format: date-time}
+      updated_at: {type: string, format: date-time}
+      submitted_at: {type: string, format: date-time}
+      expires_at: {type: string, format: date-time}

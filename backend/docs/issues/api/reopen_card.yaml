@@ -1,0 +1,26 @@
+path: /issues/reopen_card
+method: post
+summary: Переоткрыть закрытую проблему автором
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema: {$ref: '#/schemas/Request'}
+responses:
+  '200':
+    description: Карточка снова открыта.
+    content:
+      application/json:
+        schema: {$ref: '#/schemas/Response200'}
+schemas:
+  Request:
+    type: object
+    required: [card_id, comment]
+    properties:
+      card_id: {type: string, format: uuid}
+      comment: {type: string, minLength: 1}
+  Response200:
+    type: object
+    required: [card]
+    properties:
+      card: {$ref: '../internal/issue_data.yaml#/schemas/Card'}

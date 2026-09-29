@@ -1,0 +1,39 @@
+path: /access/list_company_offers
+method: get
+summary: Предложения доступа, созданные УК
+parameters:
+  - name: company_id
+    in: query
+    required: true
+    schema: {type: string, format: uuid}
+  - name: house_id
+    in: query
+    required: false
+    schema: {type: string, format: uuid}
+responses:
+  '200':
+    description: Предложения домов, которые сейчас принадлежат этой УК.
+    content:
+      application/json:
+        schema: {$ref: '#/schemas/Response200'}
+schemas:
+  OfferItem:
+    type: object
+    required: [id, house_id, address_display, entrance_number, apartment_number, phone_number, status, created_at]
+    properties:
+      id: {type: string, format: uuid}
+      house_id: {type: string, format: uuid}
+      address_display: {type: string}
+      entrance_number: {type: integer}
+      apartment_number: {type: integer}
+      phone_number: {type: string}
+      status: {type: string}
+      proposed_access_until: {type: string, format: date-time}
+      created_at: {type: string, format: date-time}
+  Response200:
+    type: object
+    required: [items]
+    properties:
+      items:
+        type: array
+        items: {$ref: '#/schemas/OfferItem'}

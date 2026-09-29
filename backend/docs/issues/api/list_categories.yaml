@@ -1,0 +1,17 @@
+path: /issues/list_categories
+method: get
+summary: Категории проблем
+responses:
+  '200':
+    description: Действующие категории.
+    content:
+      application/json:
+        schema: {$ref: '#/schemas/Response200'}
+schemas:
+  Response200:
+    type: object
+    required: [categories]
+    properties:
+      categories:
+        type: array
+        items: {$ref: '../internal/issue_data.yaml#/schemas/Category'}

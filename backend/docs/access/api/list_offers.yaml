@@ -1,0 +1,47 @@
+path: /access/list_offers
+method: get
+summary: Получить предложения доступа жителю
+responses:
+  '200':
+    description: Предложения для подтверждённого номера.
+    content:
+      application/json:
+        schema:
+          $ref: '#/schemas/Response200'
+schemas:
+  Response200:
+    type: object
+    required: [items]
+    properties:
+      items:
+        type: array
+        items:
+          $ref: '#/schemas/OfferItem'
+  OfferItem:
+    type: object
+    required: [id, house_id, address_display, apartment_id, entrance_number, apartment_number, status, created_at]
+    properties:
+      id:
+        type: string
+        format: uuid
+      house_id:
+        type: string
+        format: uuid
+      address_display:
+        type: string
+      apartment_id:
+        type: string
+        format: uuid
+      entrance_number:
+        type: integer
+      apartment_number:
+        type: integer
+      status:
+        type: string
+        enum: [pending, accepted, declined, cancelled]
+      proposed_access_until:
+        type: string
+        format: date-time
+      created_at:
+        type: string
+        format: date-time

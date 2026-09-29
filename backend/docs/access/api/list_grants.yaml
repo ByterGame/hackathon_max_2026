@@ -1,0 +1,50 @@
+path: /access/list_grants
+method: get
+summary: Получить привязки жителя к квартирам
+responses:
+  '200':
+    description: Действующие и исторические привязки пользователя.
+    content:
+      application/json:
+        schema:
+          $ref: '#/schemas/Response200'
+schemas:
+  Response200:
+    type: object
+    required: [items]
+    properties:
+      items:
+        type: array
+        items:
+          $ref: '#/schemas/GrantItem'
+  GrantItem:
+    type: object
+    required: [id, apartment_id, house_id, address_display, entrance_number, apartment_number, valid_from, status]
+    properties:
+      id:
+        type: string
+        format: uuid
+      apartment_id:
+        type: string
+        format: uuid
+      house_id:
+        type: string
+        format: uuid
+      address_display:
+        type: string
+      entrance_number:
+        type: integer
+      apartment_number:
+        type: integer
+      valid_from:
+        type: string
+        format: date-time
+      valid_to:
+        type: string
+        format: date-time
+      revoked_at:
+        type: string
+        format: date-time
+      status:
+        type: string
+        enum: [active, expired, revoked]

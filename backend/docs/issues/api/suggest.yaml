@@ -1,0 +1,40 @@
+path: /issues/suggest
+method: post
+summary: Предложить краткое название проблемы и похожие открытые карточки
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema: {$ref: '#/schemas/Request'}
+responses:
+  '200':
+    description: Подсказка для проверки жителем; карточка не создаётся и не объединяется.
+    content:
+      application/json:
+        schema: {$ref: '#/schemas/Response200'}
+schemas:
+  Request:
+    type: object
+    required: [house_id, description]
+    properties:
+      house_id: {type: string, format: uuid}
+      category_id: {type: string, format: uuid}
+      description: {type: string, minLength: 1, maxLength: 1500}
+  Candidate:
+    type: object
+    required: [id, title]
+    properties:
+      id: {type: string, format: uuid}
+      title: {type: string}
+  Response200:
+    type: object
+    required: [suggested_title, similar_card_ids, candidates, source]
+    properties:
+      suggested_title: {type: string}
+      similar_card_ids:
+        type: array
+        items: {type: string, format: uuid}
+      candidates:
+        type: array
+        items: {$ref: '#/schemas/Candidate'}
+      source: {type: string, enum: [groq, local]}

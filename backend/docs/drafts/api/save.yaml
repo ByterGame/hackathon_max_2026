@@ -1,0 +1,36 @@
+path: /drafts/save
+method: post
+summary: Создать или обновить черновик
+description: При создании draft_id и revision отсутствуют; при обновлении обязательны оба. Для обновления нужен текущий revision, после записи он увеличивается. payload может быть частичным, но содержит только поля соответствующей ручки создания обращения.
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema: {$ref: '#/schemas/Request'}
+responses:
+  '200':
+    description: Черновик сохранён.
+    content:
+      application/json:
+        schema: {$ref: '#/schemas/Response200'}
+  '400': {description: 'Некорректный тип, данные или revision.'}
+  '401': {description: Требуется подтверждённый вход MAX.}
+  '404': {description: Черновик не найден или принадлежит другому пользователю.}
+  '409': {description: Черновик уже отправлен или устарел revision.}
+  '413': {description: Данные черновика слишком велики.}
+schemas:
+  Request:
+    type: object
+    required: [flow_kind, payload]
+    properties:
+      draft_id: {type: string, format: uuid}
+      revision: {type: integer, minimum: 1}
+      flow_kind: {$ref: '../internal/draft_data.yaml#/schemas/FlowKind'}
+      payload:
+        type: object
+        additionalProperties: true
+  Response200:
+    type: object
+    required: [draft]
+    properties:
+      draft: {$ref: '../internal/draft_data.yaml#/schemas/DraftData'}

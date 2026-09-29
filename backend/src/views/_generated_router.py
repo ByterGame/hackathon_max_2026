@@ -4,10 +4,12 @@ from functools import wraps
 from importlib import import_module
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from starlette.responses import Response
+
+from src.common.idempotency import needs_http_idempotency, reserve_http_command
 
 router = APIRouter()
 
@@ -38,6 +40,969 @@ def _with_response_codes(
 
     return endpoint
 
+_handler = import_module('src.views.access.add_discussion_message')
+_models = import_module('src.gen.access.api.add_discussion_message')
+_RESPONSE_CODES_ACCESS_ADD_DISCUSSION_MESSAGE = {
+    _models.Response201: 201,
+}
+router.add_api_route(
+    path='/access/add_discussion_message',
+    endpoint=_with_response_codes(
+        _handler.add_discussion_message,
+        _RESPONSE_CODES_ACCESS_ADD_DISCUSSION_MESSAGE,
+    ),
+    methods=['POST'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/access/add_discussion_message', 'POST'
+    ) else [],
+    operation_id='access_add_discussion_message',
+    summary='Добавить сообщение в обсуждение заявки',
+    description=None,
+    tags=['access'],
+    deprecated=False,
+    status_code=201,
+    response_model=_models.Response201,
+    responses={
+        201: {
+            "description": 'Действие выполнено.',
+            "model": _models.Response201,
+        },
+    },
+)
+
+_handler = import_module('src.views.access.assign_staff')
+_models = import_module('src.gen.access.api.assign_staff')
+_RESPONSE_CODES_ACCESS_ASSIGN_STAFF = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/access/assign_staff',
+    endpoint=_with_response_codes(
+        _handler.assign_staff,
+        _RESPONSE_CODES_ACCESS_ASSIGN_STAFF,
+    ),
+    methods=['POST'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/access/assign_staff', 'POST'
+    ) else [],
+    operation_id='access_assign_staff',
+    summary='Выдать или изменить права сотрудника УК',
+    description=None,
+    tags=['access'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Действие выполнено.',
+            "model": _models.Response200,
+        },
+    },
+)
+
+_handler = import_module('src.views.access.change_request_status')
+_models = import_module('src.gen.access.api.change_request_status')
+_RESPONSE_CODES_ACCESS_CHANGE_REQUEST_STATUS = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/access/change_request_status',
+    endpoint=_with_response_codes(
+        _handler.change_request_status,
+        _RESPONSE_CODES_ACCESS_CHANGE_REQUEST_STATUS,
+    ),
+    methods=['POST'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/access/change_request_status', 'POST'
+    ) else [],
+    operation_id='access_change_request_status',
+    summary='Изменить рабочий статус заявки',
+    description='Поддержка меняет статус обращений УК, сотрудник с правом на жильцов — статус заявки жителя.',
+    tags=['access'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Рабочий статус изменён.',
+            "model": _models.Response200,
+        },
+    },
+)
+
+_handler = import_module('src.views.access.change_resident_grant')
+_models = import_module('src.gen.access.api.change_resident_grant')
+_RESPONSE_CODES_ACCESS_CHANGE_RESIDENT_GRANT = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/access/change_resident_grant',
+    endpoint=_with_response_codes(
+        _handler.change_resident_grant,
+        _RESPONSE_CODES_ACCESS_CHANGE_RESIDENT_GRANT,
+    ),
+    methods=['POST'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/access/change_resident_grant', 'POST'
+    ) else [],
+    operation_id='access_change_resident_grant',
+    summary='Продлить или отозвать доступ',
+    description=None,
+    tags=['access'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Действие выполнено.',
+            "model": _models.Response200,
+        },
+    },
+)
+
+_handler = import_module('src.views.access.create_company_registration')
+_models = import_module('src.gen.access.api.create_company_registration')
+_RESPONSE_CODES_ACCESS_CREATE_COMPANY_REGISTRATION = {
+    _models.Response201: 201,
+}
+router.add_api_route(
+    path='/access/create_company_registration',
+    endpoint=_with_response_codes(
+        _handler.create_company_registration,
+        _RESPONSE_CODES_ACCESS_CREATE_COMPANY_REGISTRATION,
+    ),
+    methods=['POST'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/access/create_company_registration', 'POST'
+    ) else [],
+    operation_id='access_create_company_registration',
+    summary='Создать обращение о регистрации УК',
+    description=None,
+    tags=['access'],
+    deprecated=False,
+    status_code=201,
+    response_model=_models.Response201,
+    responses={
+        201: {
+            "description": 'Действие выполнено.',
+            "model": _models.Response201,
+        },
+    },
+)
+
+_handler = import_module('src.views.access.create_house_request')
+_models = import_module('src.gen.access.api.create_house_request')
+_RESPONSE_CODES_ACCESS_CREATE_HOUSE_REQUEST = {
+    _models.Response201: 201,
+}
+router.add_api_route(
+    path='/access/create_house_request',
+    endpoint=_with_response_codes(
+        _handler.create_house_request,
+        _RESPONSE_CODES_ACCESS_CREATE_HOUSE_REQUEST,
+    ),
+    methods=['POST'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/access/create_house_request', 'POST'
+    ) else [],
+    operation_id='access_create_house_request',
+    summary='Подать заявку на добавление дома',
+    description=None,
+    tags=['access'],
+    deprecated=False,
+    status_code=201,
+    response_model=_models.Response201,
+    responses={
+        201: {
+            "description": 'Действие выполнено.',
+            "model": _models.Response201,
+        },
+    },
+)
+
+_handler = import_module('src.views.access.create_resident_offer')
+_models = import_module('src.gen.access.api.create_resident_offer')
+_RESPONSE_CODES_ACCESS_CREATE_RESIDENT_OFFER = {
+    _models.Response201: 201,
+}
+router.add_api_route(
+    path='/access/create_resident_offer',
+    endpoint=_with_response_codes(
+        _handler.create_resident_offer,
+        _RESPONSE_CODES_ACCESS_CREATE_RESIDENT_OFFER,
+    ),
+    methods=['POST'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/access/create_resident_offer', 'POST'
+    ) else [],
+    operation_id='access_create_resident_offer',
+    summary='Предложить жителю доступ',
+    description=None,
+    tags=['access'],
+    deprecated=False,
+    status_code=201,
+    response_model=_models.Response201,
+    responses={
+        201: {
+            "description": 'Действие выполнено.',
+            "model": _models.Response201,
+        },
+    },
+)
+
+_handler = import_module('src.views.access.create_resident_request')
+_models = import_module('src.gen.access.api.create_resident_request')
+_RESPONSE_CODES_ACCESS_CREATE_RESIDENT_REQUEST = {
+    _models.Response201: 201,
+}
+router.add_api_route(
+    path='/access/create_resident_request',
+    endpoint=_with_response_codes(
+        _handler.create_resident_request,
+        _RESPONSE_CODES_ACCESS_CREATE_RESIDENT_REQUEST,
+    ),
+    methods=['POST'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/access/create_resident_request', 'POST'
+    ) else [],
+    operation_id='access_create_resident_request',
+    summary='Подать заявку на доступ к квартире',
+    description=None,
+    tags=['access'],
+    deprecated=False,
+    status_code=201,
+    response_model=_models.Response201,
+    responses={
+        201: {
+            "description": 'Действие выполнено.',
+            "model": _models.Response201,
+        },
+    },
+)
+
+_handler = import_module('src.views.access.decide_company_registration')
+_models = import_module('src.gen.access.api.decide_company_registration')
+_RESPONSE_CODES_ACCESS_DECIDE_COMPANY_REGISTRATION = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/access/decide_company_registration',
+    endpoint=_with_response_codes(
+        _handler.decide_company_registration,
+        _RESPONSE_CODES_ACCESS_DECIDE_COMPANY_REGISTRATION,
+    ),
+    methods=['POST'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/access/decide_company_registration', 'POST'
+    ) else [],
+    operation_id='access_decide_company_registration',
+    summary='Решить обращение о регистрации УК',
+    description=None,
+    tags=['access'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Действие выполнено.',
+            "model": _models.Response200,
+        },
+    },
+)
+
+_handler = import_module('src.views.access.decide_house_request')
+_models = import_module('src.gen.access.api.decide_house_request')
+_RESPONSE_CODES_ACCESS_DECIDE_HOUSE_REQUEST = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/access/decide_house_request',
+    endpoint=_with_response_codes(
+        _handler.decide_house_request,
+        _RESPONSE_CODES_ACCESS_DECIDE_HOUSE_REQUEST,
+    ),
+    methods=['POST'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/access/decide_house_request', 'POST'
+    ) else [],
+    operation_id='access_decide_house_request',
+    summary='Решить заявку на добавление дома',
+    description=None,
+    tags=['access'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Действие выполнено.',
+            "model": _models.Response200,
+        },
+    },
+)
+
+_handler = import_module('src.views.access.decide_resident_request')
+_models = import_module('src.gen.access.api.decide_resident_request')
+_RESPONSE_CODES_ACCESS_DECIDE_RESIDENT_REQUEST = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/access/decide_resident_request',
+    endpoint=_with_response_codes(
+        _handler.decide_resident_request,
+        _RESPONSE_CODES_ACCESS_DECIDE_RESIDENT_REQUEST,
+    ),
+    methods=['POST'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/access/decide_resident_request', 'POST'
+    ) else [],
+    operation_id='access_decide_resident_request',
+    summary='Решить заявку жителя',
+    description=None,
+    tags=['access'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Действие выполнено.',
+            "model": _models.Response200,
+        },
+    },
+)
+
+_handler = import_module('src.views.access.get_request')
+_models = import_module('src.gen.access.api.get_request')
+_RESPONSE_CODES_ACCESS_GET_REQUEST = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/access/get_request',
+    endpoint=_with_response_codes(
+        _handler.get_request,
+        _RESPONSE_CODES_ACCESS_GET_REQUEST,
+    ),
+    methods=['GET'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/access/get_request', 'GET'
+    ) else [],
+    operation_id='access_get_request',
+    summary='Получить свою или доступную заявку',
+    description=None,
+    tags=['access'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Заявка с обсуждением.',
+            "model": _models.Response200,
+        },
+    },
+)
+
+_handler = import_module('src.views.access.list_company_houses')
+_models = import_module('src.gen.access.api.list_company_houses')
+_RESPONSE_CODES_ACCESS_LIST_COMPANY_HOUSES = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/access/list_company_houses',
+    endpoint=_with_response_codes(
+        _handler.list_company_houses,
+        _RESPONSE_CODES_ACCESS_LIST_COMPANY_HOUSES,
+    ),
+    methods=['GET'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/access/list_company_houses', 'GET'
+    ) else [],
+    operation_id='access_list_company_houses',
+    summary='Список подключённых домов своей УК',
+    description=None,
+    tags=['access'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Подключённые дома компании.',
+            "model": _models.Response200,
+        },
+    },
+)
+
+_handler = import_module('src.views.access.list_company_offers')
+_models = import_module('src.gen.access.api.list_company_offers')
+_RESPONSE_CODES_ACCESS_LIST_COMPANY_OFFERS = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/access/list_company_offers',
+    endpoint=_with_response_codes(
+        _handler.list_company_offers,
+        _RESPONSE_CODES_ACCESS_LIST_COMPANY_OFFERS,
+    ),
+    methods=['GET'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/access/list_company_offers', 'GET'
+    ) else [],
+    operation_id='access_list_company_offers',
+    summary='Предложения доступа, созданные УК',
+    description=None,
+    tags=['access'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Предложения домов, которые сейчас принадлежат этой УК.',
+            "model": _models.Response200,
+        },
+    },
+)
+
+_handler = import_module('src.views.access.list_grants')
+_models = import_module('src.gen.access.api.list_grants')
+_RESPONSE_CODES_ACCESS_LIST_GRANTS = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/access/list_grants',
+    endpoint=_with_response_codes(
+        _handler.list_grants,
+        _RESPONSE_CODES_ACCESS_LIST_GRANTS,
+    ),
+    methods=['GET'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/access/list_grants', 'GET'
+    ) else [],
+    operation_id='access_list_grants',
+    summary='Получить привязки жителя к квартирам',
+    description=None,
+    tags=['access'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Действующие и исторические привязки пользователя.',
+            "model": _models.Response200,
+        },
+    },
+)
+
+_handler = import_module('src.views.access.list_offers')
+_models = import_module('src.gen.access.api.list_offers')
+_RESPONSE_CODES_ACCESS_LIST_OFFERS = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/access/list_offers',
+    endpoint=_with_response_codes(
+        _handler.list_offers,
+        _RESPONSE_CODES_ACCESS_LIST_OFFERS,
+    ),
+    methods=['GET'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/access/list_offers', 'GET'
+    ) else [],
+    operation_id='access_list_offers',
+    summary='Получить предложения доступа жителю',
+    description=None,
+    tags=['access'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Предложения для подтверждённого номера.',
+            "model": _models.Response200,
+        },
+    },
+)
+
+_handler = import_module('src.views.access.list_requests')
+_models = import_module('src.gen.access.api.list_requests')
+_RESPONSE_CODES_ACCESS_LIST_REQUESTS = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/access/list_requests',
+    endpoint=_with_response_codes(
+        _handler.list_requests,
+        _RESPONSE_CODES_ACCESS_LIST_REQUESTS,
+    ),
+    methods=['GET'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/access/list_requests', 'GET'
+    ) else [],
+    operation_id='access_list_requests',
+    summary='Список доступных заявок',
+    description='Пользователь видит свои заявки, сотрудник УК — заявки своих домов, поддержка — обращения УК. Для заявки жителя ответ содержит address_display подключённого дома.',
+    tags=['access'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Список заявок.',
+            "model": _models.Response200,
+        },
+    },
+)
+
+_handler = import_module('src.views.access.list_residents')
+_models = import_module('src.gen.access.api.list_residents')
+_RESPONSE_CODES_ACCESS_LIST_RESIDENTS = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/access/list_residents',
+    endpoint=_with_response_codes(
+        _handler.list_residents,
+        _RESPONSE_CODES_ACCESS_LIST_RESIDENTS,
+    ),
+    methods=['GET'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/access/list_residents', 'GET'
+    ) else [],
+    operation_id='access_list_residents',
+    summary='Список жильцов домов своей УК',
+    description='Возвращает историю выданных, истёкших и отозванных привязок. Дома другой УК недоступны.',
+    tags=['access'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Привязки жильцов с номером квартиры, сроком и сведениями о решении.',
+            "model": _models.Response200,
+        },
+    },
+)
+
+_handler = import_module('src.views.access.list_staff')
+_models = import_module('src.gen.access.api.list_staff')
+_RESPONSE_CODES_ACCESS_LIST_STAFF = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/access/list_staff',
+    endpoint=_with_response_codes(
+        _handler.list_staff,
+        _RESPONSE_CODES_ACCESS_LIST_STAFF,
+    ),
+    methods=['GET'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/access/list_staff', 'GET'
+    ) else [],
+    operation_id='access_list_staff',
+    summary='Получить сотрудников своей УК',
+    description=None,
+    tags=['access'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Сотрудники и назначенные им права.',
+            "model": _models.Response200,
+        },
+    },
+)
+
+_handler = import_module('src.views.access.request_cancellation')
+_models = import_module('src.gen.access.api.request_cancellation')
+_RESPONSE_CODES_ACCESS_REQUEST_CANCELLATION = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/access/request_cancellation',
+    endpoint=_with_response_codes(
+        _handler.request_cancellation,
+        _RESPONSE_CODES_ACCESS_REQUEST_CANCELLATION,
+    ),
+    methods=['POST'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/access/request_cancellation', 'POST'
+    ) else [],
+    operation_id='access_request_cancellation',
+    summary='Запросить отмену заявки',
+    description=None,
+    tags=['access'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Действие выполнено.',
+            "model": _models.Response200,
+        },
+    },
+)
+
+_handler = import_module('src.views.access.resolve_cancellation')
+_models = import_module('src.gen.access.api.resolve_cancellation')
+_RESPONSE_CODES_ACCESS_RESOLVE_CANCELLATION = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/access/resolve_cancellation',
+    endpoint=_with_response_codes(
+        _handler.resolve_cancellation,
+        _RESPONSE_CODES_ACCESS_RESOLVE_CANCELLATION,
+    ),
+    methods=['POST'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/access/resolve_cancellation', 'POST'
+    ) else [],
+    operation_id='access_resolve_cancellation',
+    summary='Подтвердить или отклонить отмену',
+    description=None,
+    tags=['access'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Действие выполнено.',
+            "model": _models.Response200,
+        },
+    },
+)
+
+_handler = import_module('src.views.access.respond_resident_offer')
+_models = import_module('src.gen.access.api.respond_resident_offer')
+_RESPONSE_CODES_ACCESS_RESPOND_RESIDENT_OFFER = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/access/respond_resident_offer',
+    endpoint=_with_response_codes(
+        _handler.respond_resident_offer,
+        _RESPONSE_CODES_ACCESS_RESPOND_RESIDENT_OFFER,
+    ),
+    methods=['POST'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/access/respond_resident_offer', 'POST'
+    ) else [],
+    operation_id='access_respond_resident_offer',
+    summary='Принять или отклонить предложение',
+    description=None,
+    tags=['access'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Действие выполнено.',
+            "model": _models.Response200,
+        },
+    },
+)
+
+_handler = import_module('src.views.access.revoke_staff')
+_models = import_module('src.gen.access.api.revoke_staff')
+_RESPONSE_CODES_ACCESS_REVOKE_STAFF = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/access/revoke_staff',
+    endpoint=_with_response_codes(
+        _handler.revoke_staff,
+        _RESPONSE_CODES_ACCESS_REVOKE_STAFF,
+    ),
+    methods=['POST'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/access/revoke_staff', 'POST'
+    ) else [],
+    operation_id='access_revoke_staff',
+    summary='Отозвать права сотрудника УК',
+    description=None,
+    tags=['access'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Действие выполнено.',
+            "model": _models.Response200,
+        },
+    },
+)
+
+_handler = import_module('src.views.access.search_houses')
+_models = import_module('src.gen.access.api.search_houses')
+_RESPONSE_CODES_ACCESS_SEARCH_HOUSES = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/access/search_houses',
+    endpoint=_with_response_codes(
+        _handler.search_houses,
+        _RESPONSE_CODES_ACCESS_SEARCH_HOUSES,
+    ),
+    methods=['GET'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/access/search_houses', 'GET'
+    ) else [],
+    operation_id='access_search_houses',
+    summary='Найти подключённые дома по адресу',
+    description=None,
+    tags=['access'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Совпадающие подключённые дома.',
+            "model": _models.Response200,
+        },
+    },
+)
+
+_handler = import_module('src.views.access.update_resident_request')
+_models = import_module('src.gen.access.api.update_resident_request')
+_RESPONSE_CODES_ACCESS_UPDATE_RESIDENT_REQUEST = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/access/update_resident_request',
+    endpoint=_with_response_codes(
+        _handler.update_resident_request,
+        _RESPONSE_CODES_ACCESS_UPDATE_RESIDENT_REQUEST,
+    ),
+    methods=['POST'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/access/update_resident_request', 'POST'
+    ) else [],
+    operation_id='access_update_resident_request',
+    summary='Исправить заявку жителя',
+    description=None,
+    tags=['access'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Действие выполнено.',
+            "model": _models.Response200,
+        },
+    },
+)
+
+_handler = import_module('src.views.auth.me')
+_models = import_module('src.gen.auth.api.me')
+_RESPONSE_CODES_AUTH_ME = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/auth/me',
+    endpoint=_with_response_codes(
+        _handler.me,
+        _RESPONSE_CODES_AUTH_ME,
+    ),
+    methods=['GET'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/auth/me', 'GET'
+    ) else [],
+    operation_id='auth_me',
+    summary='Текущий аккаунт MAX',
+    description=None,
+    tags=['auth'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Данные текущего аккаунта.',
+            "model": _models.Response200,
+        },
+    },
+)
+
+_handler = import_module('src.views.auth.verify_contact')
+_models = import_module('src.gen.auth.api.verify_contact')
+_RESPONSE_CODES_AUTH_VERIFY_CONTACT = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/auth/verify_contact',
+    endpoint=_with_response_codes(
+        _handler.verify_contact,
+        _RESPONSE_CODES_AUTH_VERIFY_CONTACT,
+    ),
+    methods=['POST'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/auth/verify_contact', 'POST'
+    ) else [],
+    operation_id='auth_verify_contact',
+    summary='Подтвердить телефон через MAX Bridge',
+    description='Проверяет подпись результата requestContact() для текущего пользователя MAX.',
+    tags=['auth'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Телефон подтверждён и ожидавшие назначения сотрудника привязаны.',
+            "model": _models.Response200,
+        },
+    },
+)
+
+_handler = import_module('src.views.drafts.get')
+_models = import_module('src.gen.drafts.api.get')
+_RESPONSE_CODES_DRAFTS_GET = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/drafts/get',
+    endpoint=_with_response_codes(
+        _handler.get,
+        _RESPONSE_CODES_DRAFTS_GET,
+    ),
+    methods=['GET'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/drafts/get', 'GET'
+    ) else [],
+    operation_id='drafts_get',
+    summary='Получить свой черновик',
+    description='Чужой или несуществующий черновик возвращает одинаковый ответ 404.',
+    tags=['drafts'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Черновик пользователя.',
+            "model": _models.Response200,
+        },
+        401: {
+            "description": 'Требуется подтверждённый вход MAX.',
+        },
+        404: {
+            "description": 'Черновик не найден.',
+        },
+    },
+)
+
+_handler = import_module('src.views.drafts.list')
+_models = import_module('src.gen.drafts.api.list')
+_RESPONSE_CODES_DRAFTS_LIST = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/drafts/list',
+    endpoint=_with_response_codes(
+        _handler.list,
+        _RESPONSE_CODES_DRAFTS_LIST,
+    ),
+    methods=['GET'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/drafts/list', 'GET'
+    ) else [],
+    operation_id='drafts_list',
+    summary='Список собственных черновиков',
+    description='Возвращает до 50 последних черновиков пользователя, включая уже отправленные. Допустимые типы — issue_card и resident_request.',
+    tags=['drafts'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Черновики пользователя.',
+            "model": _models.Response200,
+        },
+        401: {
+            "description": 'Требуется подтверждённый вход MAX.',
+        },
+    },
+)
+
+_handler = import_module('src.views.drafts.save')
+_models = import_module('src.gen.drafts.api.save')
+_RESPONSE_CODES_DRAFTS_SAVE = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/drafts/save',
+    endpoint=_with_response_codes(
+        _handler.save,
+        _RESPONSE_CODES_DRAFTS_SAVE,
+    ),
+    methods=['POST'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/drafts/save', 'POST'
+    ) else [],
+    operation_id='drafts_save',
+    summary='Создать или обновить черновик',
+    description='При создании draft_id и revision отсутствуют; при обновлении обязательны оба. Для обновления нужен текущий revision, после записи он увеличивается. payload может быть частичным, но содержит только поля соответствующей ручки создания обращения.',
+    tags=['drafts'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Черновик сохранён.',
+            "model": _models.Response200,
+        },
+        400: {
+            "description": 'Некорректный тип, данные или revision.',
+        },
+        401: {
+            "description": 'Требуется подтверждённый вход MAX.',
+        },
+        404: {
+            "description": 'Черновик не найден или принадлежит другому пользователю.',
+        },
+        409: {
+            "description": 'Черновик уже отправлен или устарел revision.',
+        },
+        413: {
+            "description": 'Данные черновика слишком велики.',
+        },
+    },
+)
+
+_handler = import_module('src.views.drafts.submit')
+_models = import_module('src.gen.drafts.api.submit')
+_RESPONSE_CODES_DRAFTS_SUBMIT = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/drafts/submit',
+    endpoint=_with_response_codes(
+        _handler.submit,
+        _RESPONSE_CODES_DRAFTS_SUBMIT,
+    ),
+    methods=['POST'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/drafts/submit', 'POST'
+    ) else [],
+    operation_id='drafts_submit',
+    summary='Пометить черновик отправленным',
+    description='Только ставит отметку submitted_at после успешной подачи через предметную ручку. Сам по себе не создаёт проблему или заявку. Нужен текущий revision.',
+    tags=['drafts'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Черновик помечен отправленным.',
+            "model": _models.Response200,
+        },
+        401: {
+            "description": 'Требуется подтверждённый вход MAX.',
+        },
+        404: {
+            "description": 'Черновик не найден или принадлежит другому пользователю.',
+        },
+        409: {
+            "description": 'Черновик уже отправлен или устарел revision.',
+        },
+    },
+)
+
 _handler = import_module('src.views.example_codegen.client.create_request')
 _models = import_module('src.gen.example_codegen.api.client.create_request')
 _RESPONSE_CODES_EXAMPLE_CODEGEN_CLIENT_CREATE_REQUEST = {
@@ -50,6 +1015,9 @@ router.add_api_route(
         _RESPONSE_CODES_EXAMPLE_CODEGEN_CLIENT_CREATE_REQUEST,
     ),
     methods=['POST'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/example_codegen/client/create_request', 'POST'
+    ) else [],
     operation_id='example_codegen_client_create_request',
     summary=None,
     description=None,
@@ -78,6 +1046,9 @@ router.add_api_route(
         _RESPONSE_CODES_EXAMPLE_CODEGEN_CLIENT_GET_REQUEST,
     ),
     methods=['GET'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/example_codegen/client/get_request', 'GET'
+    ) else [],
     operation_id='example_codegen_client_get_request',
     summary='Получить заявку',
     description='Возвращает заявку по идентификатору.',
@@ -110,6 +1081,9 @@ router.add_api_route(
         _RESPONSE_CODES_IMAGES_GET_NEXT,
     ),
     methods=['GET'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/images/get_next', 'GET'
+    ) else [],
     operation_id='images_get_next',
     summary='Получить следующую картинку',
     description='Возвращает следующую картинку из упорядоченного циклического списка.',
@@ -129,6 +1103,456 @@ router.add_api_route(
     },
 )
 
+_handler = import_module('src.views.issues.add_comment')
+_models = import_module('src.gen.issues.api.add_comment')
+_RESPONSE_CODES_ISSUES_ADD_COMMENT = {
+    _models.Response201: 201,
+}
+router.add_api_route(
+    path='/issues/add_comment',
+    endpoint=_with_response_codes(
+        _handler.add_comment,
+        _RESPONSE_CODES_ISSUES_ADD_COMMENT,
+    ),
+    methods=['POST'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/issues/add_comment', 'POST'
+    ) else [],
+    operation_id='issues_add_comment',
+    summary='Добавить комментарий к проблеме',
+    description=None,
+    tags=['issues'],
+    deprecated=False,
+    status_code=201,
+    response_model=_models.Response201,
+    responses={
+        201: {
+            "description": 'Комментарий добавлен.',
+            "model": _models.Response201,
+        },
+    },
+)
+
+_handler = import_module('src.views.issues.create_card')
+_models = import_module('src.gen.issues.api.create_card')
+_RESPONSE_CODES_ISSUES_CREATE_CARD = {
+    _models.Response201: 201,
+}
+router.add_api_route(
+    path='/issues/create_card',
+    endpoint=_with_response_codes(
+        _handler.create_card,
+        _RESPONSE_CODES_ISSUES_CREATE_CARD,
+    ),
+    methods=['POST'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/issues/create_card', 'POST'
+    ) else [],
+    operation_id='issues_create_card',
+    summary='Сообщить о проблеме дома',
+    description=None,
+    tags=['issues'],
+    deprecated=False,
+    status_code=201,
+    response_model=_models.Response201,
+    responses={
+        201: {
+            "description": 'Создана общая карточка.',
+            "model": _models.Response201,
+        },
+    },
+)
+
+_handler = import_module('src.views.issues.edit_card')
+_models = import_module('src.gen.issues.api.edit_card')
+_RESPONSE_CODES_ISSUES_EDIT_CARD = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/issues/edit_card',
+    endpoint=_with_response_codes(
+        _handler.edit_card,
+        _RESPONSE_CODES_ISSUES_EDIT_CARD,
+    ),
+    methods=['POST'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/issues/edit_card', 'POST'
+    ) else [],
+    operation_id='issues_edit_card',
+    summary='Изменить сводку и область проблемы от имени УК',
+    description=None,
+    tags=['issues'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Сводная карточка изменена; исходные обращения сохранены.',
+            "model": _models.Response200,
+        },
+    },
+)
+
+_handler = import_module('src.views.issues.get_card')
+_models = import_module('src.gen.issues.api.get_card')
+_RESPONSE_CODES_ISSUES_GET_CARD = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/issues/get_card',
+    endpoint=_with_response_codes(
+        _handler.get_card,
+        _RESPONSE_CODES_ISSUES_GET_CARD,
+    ),
+    methods=['GET'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/issues/get_card', 'GET'
+    ) else [],
+    operation_id='issues_get_card',
+    summary='Карточка проблемы с историей',
+    description=None,
+    tags=['issues'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Доступная пользователю карточка.',
+            "model": _models.Response200,
+        },
+    },
+)
+
+_handler = import_module('src.views.issues.list_cards')
+_models = import_module('src.gen.issues.api.list_cards')
+_RESPONSE_CODES_ISSUES_LIST_CARDS = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/issues/list_cards',
+    endpoint=_with_response_codes(
+        _handler.list_cards,
+        _RESPONSE_CODES_ISSUES_LIST_CARDS,
+    ),
+    methods=['GET'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/issues/list_cards', 'GET'
+    ) else [],
+    operation_id='issues_list_cards',
+    summary='Карточки проблем дома',
+    description=None,
+    tags=['issues'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Карточки, видимые пользователю.',
+            "model": _models.Response200,
+        },
+    },
+)
+
+_handler = import_module('src.views.issues.list_categories')
+_models = import_module('src.gen.issues.api.list_categories')
+_RESPONSE_CODES_ISSUES_LIST_CATEGORIES = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/issues/list_categories',
+    endpoint=_with_response_codes(
+        _handler.list_categories,
+        _RESPONSE_CODES_ISSUES_LIST_CATEGORIES,
+    ),
+    methods=['GET'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/issues/list_categories', 'GET'
+    ) else [],
+    operation_id='issues_list_categories',
+    summary='Категории проблем',
+    description=None,
+    tags=['issues'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Действующие категории.',
+            "model": _models.Response200,
+        },
+    },
+)
+
+_handler = import_module('src.views.issues.merge_cards')
+_models = import_module('src.gen.issues.api.merge_cards')
+_RESPONSE_CODES_ISSUES_MERGE_CARDS = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/issues/merge_cards',
+    endpoint=_with_response_codes(
+        _handler.merge_cards,
+        _RESPONSE_CODES_ISSUES_MERGE_CARDS,
+    ),
+    methods=['POST'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/issues/merge_cards', 'POST'
+    ) else [],
+    operation_id='issues_merge_cards',
+    summary='Объединить дубли проблем сотрудником УК',
+    description=None,
+    tags=['issues'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Возвращена итоговая карточка.',
+            "model": _models.Response200,
+        },
+    },
+)
+
+_handler = import_module('src.views.issues.reopen_card')
+_models = import_module('src.gen.issues.api.reopen_card')
+_RESPONSE_CODES_ISSUES_REOPEN_CARD = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/issues/reopen_card',
+    endpoint=_with_response_codes(
+        _handler.reopen_card,
+        _RESPONSE_CODES_ISSUES_REOPEN_CARD,
+    ),
+    methods=['POST'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/issues/reopen_card', 'POST'
+    ) else [],
+    operation_id='issues_reopen_card',
+    summary='Переоткрыть закрытую проблему автором',
+    description=None,
+    tags=['issues'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Карточка снова открыта.',
+            "model": _models.Response200,
+        },
+    },
+)
+
+_handler = import_module('src.views.issues.set_status')
+_models = import_module('src.gen.issues.api.set_status')
+_RESPONSE_CODES_ISSUES_SET_STATUS = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/issues/set_status',
+    endpoint=_with_response_codes(
+        _handler.set_status,
+        _RESPONSE_CODES_ISSUES_SET_STATUS,
+    ),
+    methods=['POST'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/issues/set_status', 'POST'
+    ) else [],
+    operation_id='issues_set_status',
+    summary='Изменить статус проблемы от имени УК',
+    description=None,
+    tags=['issues'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Статус изменён.',
+            "model": _models.Response200,
+        },
+    },
+)
+
+_handler = import_module('src.views.issues.suggest')
+_models = import_module('src.gen.issues.api.suggest')
+_RESPONSE_CODES_ISSUES_SUGGEST = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/issues/suggest',
+    endpoint=_with_response_codes(
+        _handler.suggest,
+        _RESPONSE_CODES_ISSUES_SUGGEST,
+    ),
+    methods=['POST'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/issues/suggest', 'POST'
+    ) else [],
+    operation_id='issues_suggest',
+    summary='Предложить краткое название проблемы и похожие открытые карточки',
+    description=None,
+    tags=['issues'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Подсказка для проверки жителем; карточка не создаётся и не объединяется.',
+            "model": _models.Response200,
+        },
+    },
+)
+
+_handler = import_module('src.views.issues.support_card')
+_models = import_module('src.gen.issues.api.support_card')
+_RESPONSE_CODES_ISSUES_SUPPORT_CARD = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/issues/support_card',
+    endpoint=_with_response_codes(
+        _handler.support_card,
+        _RESPONSE_CODES_ISSUES_SUPPORT_CARD,
+    ),
+    methods=['POST'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/issues/support_card', 'POST'
+    ) else [],
+    operation_id='issues_support_card',
+    summary='Поддержать существующую проблему',
+    description=None,
+    tags=['issues'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Поддержка учтена один раз.',
+            "model": _models.Response200,
+        },
+    },
+)
+
+_handler = import_module('src.views.notifications.get_mute')
+_models = import_module('src.gen.notifications.api.get_mute')
+_RESPONSE_CODES_NOTIFICATIONS_GET_MUTE = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/notifications/get_mute',
+    endpoint=_with_response_codes(
+        _handler.get_mute,
+        _RESPONSE_CODES_NOTIFICATIONS_GET_MUTE,
+    ),
+    methods=['GET'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/notifications/get_mute', 'GET'
+    ) else [],
+    operation_id='notifications_get_mute',
+    summary='Текущая настройка сообщений бота по карточке или заявке',
+    description=None,
+    tags=['notifications'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Настройка для текущего пользователя.',
+            "model": _models.Response200,
+        },
+    },
+)
+
+_handler = import_module('src.views.notifications.list')
+_models = import_module('src.gen.notifications.api.list')
+_RESPONSE_CODES_NOTIFICATIONS_LIST = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/notifications/list',
+    endpoint=_with_response_codes(
+        _handler.list,
+        _RESPONSE_CODES_NOTIFICATIONS_LIST,
+    ),
+    methods=['GET'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/notifications/list', 'GET'
+    ) else [],
+    operation_id='notifications_list',
+    summary='Мои доступные уведомления',
+    description=None,
+    tags=['notifications'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Только уведомления по объектам, которые пользователь может видеть сейчас.',
+            "model": _models.Response200,
+        },
+    },
+)
+
+_handler = import_module('src.views.notifications.mark_read')
+_models = import_module('src.gen.notifications.api.mark_read')
+_RESPONSE_CODES_NOTIFICATIONS_MARK_READ = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/notifications/mark_read',
+    endpoint=_with_response_codes(
+        _handler.mark_read,
+        _RESPONSE_CODES_NOTIFICATIONS_MARK_READ,
+    ),
+    methods=['POST'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/notifications/mark_read', 'POST'
+    ) else [],
+    operation_id='notifications_mark_read',
+    summary='Отметить уведомление прочитанным',
+    description=None,
+    tags=['notifications'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Уведомление отмечено прочитанным.',
+            "model": _models.Response200,
+        },
+    },
+)
+
+_handler = import_module('src.views.notifications.set_mute')
+_models = import_module('src.gen.notifications.api.set_mute')
+_RESPONSE_CODES_NOTIFICATIONS_SET_MUTE = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/notifications/set_mute',
+    endpoint=_with_response_codes(
+        _handler.set_mute,
+        _RESPONSE_CODES_NOTIFICATIONS_SET_MUTE,
+    ),
+    methods=['POST'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/notifications/set_mute', 'POST'
+    ) else [],
+    operation_id='notifications_set_mute',
+    summary='Включить или отключить личные сообщения бота по карточке или заявке',
+    description=None,
+    tags=['notifications'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Настройка сохранена.',
+            "model": _models.Response200,
+        },
+    },
+)
+
 _handler = import_module('src.views.service.health')
 _models = import_module('src.gen.service.api.health')
 _RESPONSE_CODES_SERVICE_HEALTH = {
@@ -141,6 +1565,9 @@ router.add_api_route(
         _RESPONSE_CODES_SERVICE_HEALTH,
     ),
     methods=['GET'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/service/health', 'GET'
+    ) else [],
     operation_id='service_health',
     summary='Проверить состояние сервиса',
     description='Возвращает успешный ответ, если HTTP-сервис работает.',
@@ -169,6 +1596,9 @@ router.add_api_route(
         _RESPONSE_CODES_SERVICE_READY,
     ),
     methods=['GET'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/service/ready', 'GET'
+    ) else [],
     operation_id='service_ready',
     summary='Проверить доступность PostgreSQL',
     description='Выполняет простой запрос к базе данных.',

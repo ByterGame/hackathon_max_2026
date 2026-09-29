@@ -1,0 +1,24 @@
+path: /drafts/list
+method: get
+summary: Список собственных черновиков
+description: Возвращает до 50 последних черновиков пользователя, включая уже отправленные. Допустимые типы — issue_card и resident_request.
+parameters:
+  - name: flow_kind
+    in: query
+    required: false
+    schema: {$ref: '../internal/draft_data.yaml#/schemas/FlowKind'}
+responses:
+  '200':
+    description: Черновики пользователя.
+    content:
+      application/json:
+        schema: {$ref: '#/schemas/Response200'}
+  '401': {description: Требуется подтверждённый вход MAX.}
+schemas:
+  Response200:
+    type: object
+    required: [items]
+    properties:
+      items:
+        type: array
+        items: {$ref: '../internal/draft_data.yaml#/schemas/DraftData'}

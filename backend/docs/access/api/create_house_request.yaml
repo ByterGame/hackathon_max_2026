@@ -1,0 +1,44 @@
+path: /access/create_house_request
+method: post
+summary: Подать заявку на добавление дома
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema:
+        $ref: '#/schemas/Request'
+responses:
+  '201':
+    description: Действие выполнено.
+    content:
+      application/json:
+        schema:
+          $ref: '#/schemas/Response201'
+schemas:
+  Request:
+    type: object
+    required: [entered_address]
+    properties:
+      registration_request_id:
+        type: string
+        format: uuid
+      company_id:
+        type: string
+        format: uuid
+      entered_address:
+        type: string
+        minLength: 1
+      free_text:
+        type: string
+  Response201:
+    type: object
+    required: [id, status]
+    properties:
+      id:
+        type: string
+        format: uuid
+      status:
+        type: string
+      related_id:
+        type: string
+        format: uuid

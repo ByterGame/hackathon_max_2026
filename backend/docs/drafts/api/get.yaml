@@ -1,0 +1,23 @@
+path: /drafts/get
+method: get
+summary: Получить свой черновик
+description: Чужой или несуществующий черновик возвращает одинаковый ответ 404.
+parameters:
+  - name: draft_id
+    in: query
+    required: true
+    schema: {type: string, format: uuid}
+responses:
+  '200':
+    description: Черновик пользователя.
+    content:
+      application/json:
+        schema: {$ref: '#/schemas/Response200'}
+  '401': {description: Требуется подтверждённый вход MAX.}
+  '404': {description: Черновик не найден.}
+schemas:
+  Response200:
+    type: object
+    required: [draft]
+    properties:
+      draft: {$ref: '../internal/draft_data.yaml#/schemas/DraftData'}

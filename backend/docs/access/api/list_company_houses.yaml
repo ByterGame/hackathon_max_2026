@@ -1,0 +1,37 @@
+path: /access/list_company_houses
+method: get
+summary: Список подключённых домов своей УК
+parameters:
+  - name: company_id
+    in: query
+    required: true
+    schema:
+      type: string
+      format: uuid
+responses:
+  '200':
+    description: Подключённые дома компании.
+    content:
+      application/json:
+        schema:
+          $ref: '#/schemas/Response200'
+schemas:
+  Response200:
+    type: object
+    required: [items]
+    properties:
+      items:
+        type: array
+        items:
+          $ref: '#/schemas/HouseItem'
+  HouseItem:
+    type: object
+    required: [id, address_display]
+    properties:
+      id:
+        type: string
+        format: uuid
+      address_display:
+        type: string
+      entrance_count:
+        type: integer

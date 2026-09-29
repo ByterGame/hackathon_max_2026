@@ -1,0 +1,39 @@
+path: /access/request_cancellation
+method: post
+summary: Запросить отмену заявки
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema:
+        $ref: '#/schemas/Request'
+responses:
+  '200':
+    description: Действие выполнено.
+    content:
+      application/json:
+        schema:
+          $ref: '#/schemas/Response200'
+schemas:
+  Request:
+    type: object
+    required: [request_kind, request_id]
+    properties:
+      request_kind:
+        type: string
+        enum: [company_registration, house_addition, resident]
+      request_id:
+        type: string
+        format: uuid
+  Response200:
+    type: object
+    required: [id, status]
+    properties:
+      id:
+        type: string
+        format: uuid
+      status:
+        type: string
+      related_id:
+        type: string
+        format: uuid

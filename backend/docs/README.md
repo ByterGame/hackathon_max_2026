@@ -10,9 +10,13 @@
 python -m pip install -r backend/requirements.txt
 python -m pip install -r backend/tools/codegen/requirements.txt
 cd backend
+alembic -c alembic.ini upgrade head
 python -m src.bot.main
 python -m uvicorn src.main:app --reload
 ```
+
+Последние две команды запускайте в разных терминалах. Миграцию выполняйте
+один раз после обновления кода, до запуска процессов.
 
 Точка запуска бота — `backend/src/bot/main.py`. При запуске через
 `docker compose up --build` бот работает в отдельном контейнере; прямые
@@ -21,8 +25,11 @@ python -m uvicorn src.main:app --reload
 
 ## Каталоги
 
-- `backend/src/bot/`: обработчики, клавиатуры, мидлвари и запуск бота.
-- `backend/src/views/`: HTTP-обработчики и реестр маршрутов.
+- `backend/src/bot/`: обработчики текстовых команд MAX и запуск бота с
+  доставкой уведомлений. Команды доступа: `/access help`, карточки:
+  `/issuehelp`, уведомления: `/notificationhelp`, общие черновики: `/drafthelp`,
+  приватные вложения: `/filehelp`.
+- `backend/src/views/`: HTTP-обработчики и сгенерированный реестр маршрутов.
 - `backend/src/gen/<domain_name>/api/<остаток пути ручки>.py`: модели запросов,
   параметров и ответов API; домен берётся из первого сегмента URL. (не редактируется руками)
 - `backend/src/domain/<domain_name>/`: общие сценарии бота и API;
@@ -30,15 +37,14 @@ python -m uvicorn src.main:app --reload
 - `backend/src/gen/<domain_name>/internal/<name>.py`: генерируемые внутренние модели
   Pydantic и перечисления Enum. (не редактируется руками)
 - `backend/src/clients/`: будущие клиенты внешних сервисов.
-- `backend/src/db/`: подключение к PostgreSQL и место для будущих моделей,
-  запросов, репозиториев и миграций. Предметная схема пока не определена.
+- `backend/src/db/`: модели пяти схем PostgreSQL, сессии и Alembic-миграции.
 - `backend/src/core/`: настройки и логирование.
-- `backend/src/common/dependencies.py`: `DBConnection` для передачи соединения
-  PostgreSQL в HTTP-обработчик. Соединение берётся из пула и возвращается
-  автоматически; транзакцию при необходимости открывает сам сценарий.
+- `backend/src/db/session.py`: `get_session` для передачи SQLAlchemy-сессии
+  в HTTP-обработчик. Изменяющий сценарий фиксирует предметные данные и журнал
+  в одной транзакции.
 - `backend/src/utils/`: вспомогательные функции по необходимости.
-- `miniapp/src/`: пока только каталоги под мини-приложение, без установки
-  frontend-зависимостей и без реализации интерфейса.
+- `miniapp/src/`: интерфейс React/TypeScript, MAX Bridge, интеграции с API;
+  локальное демо включается только через `VITE_DEMO_MODE=true`.
 - `backend/docs/<domain_name>/api/<name>.yaml`: документы отдельных HTTP-ручек.
 - `backend/docs/<domain_name>/internal/<name>.yaml`: группы связанных внутренних
   схем; каждый файл даёт один модуль `src/gen/<domain_name>/internal/<name>.py`.
@@ -46,7 +52,8 @@ python -m uvicorn src.main:app --reload
   это не предметная область продукта.
 - `backend/tools/codegen/`: сборщик контрактов, генератор и шаблоны Python-кода.
 
-Миниапп предполагает React, TypeScript, Vite, MAX Bridge и MAX UI.
+Мини-приложение использует React, TypeScript, Vite, MAX Bridge и собственные
+стили; библиотека MAX UI пока не подключена.
 `pages/` содержит экраны; `features/<domain_name>/ui/` — предметные компоненты;
 `features/<domain_name>/integrations/{client_api,max_actions}.ts` — запросы
 к бэкенду и предметные действия с MAX. Общий адаптер MAX — `integrations/max/`,
@@ -55,10 +62,14 @@ python -m uvicorn src.main:app --reload
 
 ## Зависимости
 
-- `backend/requirements.txt` — полный `pip freeze` окружения бэкенда.
+- `backend/requirements.txt` — версии пакетов для исполнения бэкенда и миграций;
+  `SQLAlchemy[asyncio]` явно подтягивает `greenlet` для асинхронной работы с БД.
 - `backend/tools/codegen/requirements.txt` — полный `pip freeze` отдельного окружения
   кодогенератора.
 
 Правила YAML и команды генерации описаны в [codegen.md](codegen.md).
+Потоковый API приватных файлов подключён отдельным маршрутизатором и описан
+в [files/README.md](files/README.md); в статический `backend/openapi.yaml`
+кодогенератора он пока не входит, но присутствует в живом `/openapi.json`.
 
 Проверки из каталога `backend/`: `python -m unittest discover -s tests -v`.

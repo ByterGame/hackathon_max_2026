@@ -1,0 +1,26 @@
+path: /notifications/get_mute
+method: get
+summary: Текущая настройка сообщений бота по карточке или заявке
+parameters:
+  - name: subject_kind
+    in: query
+    required: true
+    schema:
+      type: string
+      enum: [issue_card, resident_request]
+  - name: subject_id
+    in: query
+    required: true
+    schema: {type: string, format: uuid}
+responses:
+  '200':
+    description: Настройка для текущего пользователя.
+    content:
+      application/json:
+        schema: {$ref: '#/schemas/Response200'}
+schemas:
+  Response200:
+    type: object
+    required: [is_muted]
+    properties:
+      is_muted: {type: boolean}

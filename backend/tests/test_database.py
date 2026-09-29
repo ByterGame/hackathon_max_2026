@@ -34,7 +34,10 @@ class DatabaseConfigTests(unittest.TestCase):
 class ReadinessTests(unittest.IsolatedAsyncioTestCase):
     async def test_ready_queries_database(self):
         app = create_app()
-        app.state.db_pool = SimpleNamespace(fetchval=AsyncMock(return_value=1))
+        session = SimpleNamespace(scalar=AsyncMock(return_value=1))
+        context = AsyncMock()
+        context.__aenter__.return_value = session
+        app.state.db_session_factory = lambda: context
         request = Request({"type": "http", "app": app})
         ready = next(
             route.endpoint for route in router.routes if route.path == "/service/ready"
@@ -43,13 +46,15 @@ class ReadinessTests(unittest.IsolatedAsyncioTestCase):
         response = await ready(request)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(json.loads(response.body), {"status": "ok"})
-        app.state.db_pool.fetchval.assert_awaited_once_with("SELECT 1")
+        session.scalar.assert_awaited_once()
+        self.assertEqual(str(session.scalar.await_args.args[0]), "SELECT 1")
 
     async def test_ready_returns_503_when_database_is_unavailable(self):
         app = create_app()
-        app.state.db_pool = SimpleNamespace(
-            fetchval=AsyncMock(side_effect=OSError("connection lost"))
-        )
+        session = SimpleNamespace(scalar=AsyncMock(side_effect=OSError("connection lost")))
+        context = AsyncMock()
+        context.__aenter__.return_value = session
+        app.state.db_session_factory = lambda: context
         request = Request({"type": "http", "app": app})
         ready = next(
             route.endpoint for route in router.routes if route.path == "/service/ready"

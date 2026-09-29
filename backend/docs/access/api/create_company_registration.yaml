@@ -1,0 +1,41 @@
+path: /access/create_company_registration
+method: post
+summary: Создать обращение о регистрации УК
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema:
+        $ref: '#/schemas/Request'
+responses:
+  '201':
+    description: Действие выполнено.
+    content:
+      application/json:
+        schema:
+          $ref: '#/schemas/Response201'
+schemas:
+  Request:
+    type: object
+    required: [phone_number, free_text]
+    properties:
+      phone_number:
+        type: string
+        minLength: 1
+      free_text:
+        type: string
+        minLength: 1
+      proposed_company_name:
+        type: string
+  Response201:
+    type: object
+    required: [id, status]
+    properties:
+      id:
+        type: string
+        format: uuid
+      status:
+        type: string
+      related_id:
+        type: string
+        format: uuid

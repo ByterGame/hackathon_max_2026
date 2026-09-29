@@ -1,0 +1,31 @@
+path: /issues/merge_cards
+method: post
+summary: Объединить дубли проблем сотрудником УК
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema: {$ref: '#/schemas/Request'}
+responses:
+  '200':
+    description: Возвращена итоговая карточка.
+    content:
+      application/json:
+        schema: {$ref: '#/schemas/Response200'}
+schemas:
+  Request:
+    type: object
+    required: [left_id, right_id, final_title, final_status]
+    properties:
+      left_id: {type: string, format: uuid}
+      right_id: {type: string, format: uuid}
+      final_title: {type: string, minLength: 1}
+      final_status:
+        type: string
+        enum: [open, reviewing, needs_info, in_progress]
+      final_note: {type: string}
+  Response200:
+    type: object
+    required: [card]
+    properties:
+      card: {$ref: '../internal/issue_data.yaml#/schemas/Card'}

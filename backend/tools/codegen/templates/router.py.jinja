@@ -5,10 +5,12 @@ from functools import wraps
 from importlib import import_module
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from starlette.responses import Response
+
+from src.common.idempotency import needs_http_idempotency, reserve_http_command
 {% else %}
 from fastapi import APIRouter
 {% endif %}
@@ -61,6 +63,9 @@ router.add_api_route(
         {{ route.response_codes_name }},
     ),
     methods=[{{ (route.endpoint.method | upper) | py }}],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        {{ route.endpoint.path | py }}, {{ (route.endpoint.method | upper) | py }}
+    ) else [],
     operation_id={{ route.endpoint.operation.operationId | py }},
     summary={{ route.endpoint.operation.get('summary') | py }},
     description={{ route.endpoint.operation.get('description') | py }},

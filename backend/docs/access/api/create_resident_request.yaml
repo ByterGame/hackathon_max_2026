@@ -1,0 +1,45 @@
+path: /access/create_resident_request
+method: post
+summary: Подать заявку на доступ к квартире
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema:
+        $ref: '#/schemas/Request'
+responses:
+  '201':
+    description: Действие выполнено.
+    content:
+      application/json:
+        schema:
+          $ref: '#/schemas/Response201'
+schemas:
+  Request:
+    type: object
+    required: [house_id, full_name, entrance_number, apartment_number]
+    properties:
+      house_id:
+        type: string
+        format: uuid
+      full_name:
+        type: string
+        minLength: 1
+      entrance_number:
+        type: integer
+        minimum: 1
+      apartment_number:
+        type: integer
+        minimum: 1
+  Response201:
+    type: object
+    required: [id, status]
+    properties:
+      id:
+        type: string
+        format: uuid
+      status:
+        type: string
+      related_id:
+        type: string
+        format: uuid

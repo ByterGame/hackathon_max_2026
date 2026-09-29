@@ -1,0 +1,37 @@
+path: /access/search_houses
+method: get
+summary: Найти подключённые дома по адресу
+parameters:
+  - name: text
+    in: query
+    required: true
+    schema:
+      type: string
+      minLength: 2
+responses:
+  '200':
+    description: Совпадающие подключённые дома.
+    content:
+      application/json:
+        schema:
+          $ref: '#/schemas/Response200'
+schemas:
+  Response200:
+    type: object
+    required: [items]
+    properties:
+      items:
+        type: array
+        items:
+          $ref: '#/schemas/House'
+  House:
+    type: object
+    required: [id, address_display]
+    properties:
+      id:
+        type: string
+        format: uuid
+      address_display:
+        type: string
+      entrance_count:
+        type: integer

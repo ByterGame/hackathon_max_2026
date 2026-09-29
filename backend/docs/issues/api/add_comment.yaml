@@ -1,0 +1,26 @@
+path: /issues/add_comment
+method: post
+summary: Добавить комментарий к проблеме
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema: {$ref: '#/schemas/Request'}
+responses:
+  '201':
+    description: Комментарий добавлен.
+    content:
+      application/json:
+        schema: {$ref: '#/schemas/Response201'}
+schemas:
+  Request:
+    type: object
+    required: [card_id, text]
+    properties:
+      card_id: {type: string, format: uuid}
+      text: {type: string, minLength: 1}
+  Response201:
+    type: object
+    required: [message]
+    properties:
+      message: {$ref: '../internal/issue_data.yaml#/schemas/Message'}

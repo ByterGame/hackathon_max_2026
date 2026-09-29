@@ -1,0 +1,29 @@
+path: /notifications/set_mute
+method: post
+summary: Включить или отключить личные сообщения бота по карточке или заявке
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema: {$ref: '#/schemas/Request'}
+responses:
+  '200':
+    description: Настройка сохранена.
+    content:
+      application/json:
+        schema: {$ref: '#/schemas/Response200'}
+schemas:
+  Request:
+    type: object
+    required: [subject_kind, subject_id, is_muted]
+    properties:
+      subject_kind:
+        type: string
+        enum: [issue_card, resident_request]
+      subject_id: {type: string, format: uuid}
+      is_muted: {type: boolean}
+  Response200:
+    type: object
+    required: [is_muted]
+    properties:
+      is_muted: {type: boolean}

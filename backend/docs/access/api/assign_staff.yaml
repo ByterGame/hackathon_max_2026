@@ -1,0 +1,45 @@
+path: /access/assign_staff
+method: post
+summary: Выдать или изменить права сотрудника УК
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema:
+        $ref: '#/schemas/Request'
+responses:
+  '200':
+    description: Действие выполнено.
+    content:
+      application/json:
+        schema:
+          $ref: '#/schemas/Response200'
+schemas:
+  Request:
+    type: object
+    required: [company_id, phone_number, can_manage_staff, can_manage_residents, can_manage_issues]
+    properties:
+      company_id:
+        type: string
+        format: uuid
+      phone_number:
+        type: string
+        minLength: 1
+      can_manage_staff:
+        type: boolean
+      can_manage_residents:
+        type: boolean
+      can_manage_issues:
+        type: boolean
+  Response200:
+    type: object
+    required: [id, status]
+    properties:
+      id:
+        type: string
+        format: uuid
+      status:
+        type: string
+      related_id:
+        type: string
+        format: uuid

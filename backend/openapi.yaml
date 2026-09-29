@@ -4,6 +4,657 @@ info:
   title: Hackathon MAX API
   version: 0.1.0
 paths:
+  /access/add_discussion_message:
+    post:
+      summary: Добавить сообщение в обсуждение заявки
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/gen.access.api.add_discussion_message.Request'
+      responses:
+        '201':
+          description: Действие выполнено.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.access.api.add_discussion_message.Response201'
+      operationId: access_add_discussion_message
+      tags:
+      - access
+  /access/assign_staff:
+    post:
+      summary: Выдать или изменить права сотрудника УК
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/gen.access.api.assign_staff.Request'
+      responses:
+        '200':
+          description: Действие выполнено.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.access.api.assign_staff.Response200'
+      operationId: access_assign_staff
+      tags:
+      - access
+  /access/change_request_status:
+    post:
+      summary: Изменить рабочий статус заявки
+      description: Поддержка меняет статус обращений УК, сотрудник с правом на жильцов
+        — статус заявки жителя.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/gen.access.api.change_request_status.Request'
+      responses:
+        '200':
+          description: Рабочий статус изменён.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.access.api.change_request_status.Response200'
+      operationId: access_change_request_status
+      tags:
+      - access
+  /access/change_resident_grant:
+    post:
+      summary: Продлить или отозвать доступ
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/gen.access.api.change_resident_grant.Request'
+      responses:
+        '200':
+          description: Действие выполнено.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.access.api.change_resident_grant.Response200'
+      operationId: access_change_resident_grant
+      tags:
+      - access
+  /access/create_company_registration:
+    post:
+      summary: Создать обращение о регистрации УК
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/gen.access.api.create_company_registration.Request'
+      responses:
+        '201':
+          description: Действие выполнено.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.access.api.create_company_registration.Response201'
+      operationId: access_create_company_registration
+      tags:
+      - access
+  /access/create_house_request:
+    post:
+      summary: Подать заявку на добавление дома
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/gen.access.api.create_house_request.Request'
+      responses:
+        '201':
+          description: Действие выполнено.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.access.api.create_house_request.Response201'
+      operationId: access_create_house_request
+      tags:
+      - access
+  /access/create_resident_offer:
+    post:
+      summary: Предложить жителю доступ
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/gen.access.api.create_resident_offer.Request'
+      responses:
+        '201':
+          description: Действие выполнено.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.access.api.create_resident_offer.Response201'
+      operationId: access_create_resident_offer
+      tags:
+      - access
+  /access/create_resident_request:
+    post:
+      summary: Подать заявку на доступ к квартире
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/gen.access.api.create_resident_request.Request'
+      responses:
+        '201':
+          description: Действие выполнено.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.access.api.create_resident_request.Response201'
+      operationId: access_create_resident_request
+      tags:
+      - access
+  /access/decide_company_registration:
+    post:
+      summary: Решить обращение о регистрации УК
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/gen.access.api.decide_company_registration.Request'
+      responses:
+        '200':
+          description: Действие выполнено.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.access.api.decide_company_registration.Response200'
+      operationId: access_decide_company_registration
+      tags:
+      - access
+  /access/decide_house_request:
+    post:
+      summary: Решить заявку на добавление дома
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/gen.access.api.decide_house_request.Request'
+      responses:
+        '200':
+          description: Действие выполнено.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.access.api.decide_house_request.Response200'
+      operationId: access_decide_house_request
+      tags:
+      - access
+  /access/decide_resident_request:
+    post:
+      summary: Решить заявку жителя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/gen.access.api.decide_resident_request.Request'
+      responses:
+        '200':
+          description: Действие выполнено.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.access.api.decide_resident_request.Response200'
+      operationId: access_decide_resident_request
+      tags:
+      - access
+  /access/get_request:
+    get:
+      summary: Получить свою или доступную заявку
+      parameters:
+      - name: request_kind
+        in: query
+        required: true
+        schema:
+          type: string
+          enum: &id001
+          - company_registration
+          - house_addition
+          - resident
+      - name: request_id
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Заявка с обсуждением.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.access.api.get_request.Response200'
+      operationId: access_get_request
+      tags:
+      - access
+  /access/list_company_houses:
+    get:
+      summary: Список подключённых домов своей УК
+      parameters:
+      - name: company_id
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Подключённые дома компании.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.access.api.list_company_houses.Response200'
+      operationId: access_list_company_houses
+      tags:
+      - access
+  /access/list_company_offers:
+    get:
+      summary: Предложения доступа, созданные УК
+      parameters:
+      - name: company_id
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: house_id
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Предложения домов, которые сейчас принадлежат этой УК.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.access.api.list_company_offers.Response200'
+      operationId: access_list_company_offers
+      tags:
+      - access
+  /access/list_grants:
+    get:
+      summary: Получить привязки жителя к квартирам
+      responses:
+        '200':
+          description: Действующие и исторические привязки пользователя.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.access.api.list_grants.Response200'
+      operationId: access_list_grants
+      tags:
+      - access
+  /access/list_offers:
+    get:
+      summary: Получить предложения доступа жителю
+      responses:
+        '200':
+          description: Предложения для подтверждённого номера.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.access.api.list_offers.Response200'
+      operationId: access_list_offers
+      tags:
+      - access
+  /access/list_requests:
+    get:
+      summary: Список доступных заявок
+      description: Пользователь видит свои заявки, сотрудник УК — заявки своих домов,
+        поддержка — обращения УК. Для заявки жителя ответ содержит address_display
+        подключённого дома.
+      parameters:
+      - name: request_kind
+        in: query
+        required: true
+        schema:
+          type: string
+          enum: &id002
+          - company_registration
+          - house_addition
+          - resident
+      - name: house_id
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Список заявок.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.access.api.list_requests.Response200'
+      operationId: access_list_requests
+      tags:
+      - access
+  /access/list_residents:
+    get:
+      summary: Список жильцов домов своей УК
+      description: Возвращает историю выданных, истёкших и отозванных привязок. Дома
+        другой УК недоступны.
+      parameters:
+      - name: company_id
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: house_id
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Привязки жильцов с номером квартиры, сроком и сведениями о
+            решении.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.access.api.list_residents.Response200'
+      operationId: access_list_residents
+      tags:
+      - access
+  /access/list_staff:
+    get:
+      summary: Получить сотрудников своей УК
+      parameters:
+      - name: company_id
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Сотрудники и назначенные им права.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.access.api.list_staff.Response200'
+      operationId: access_list_staff
+      tags:
+      - access
+  /access/request_cancellation:
+    post:
+      summary: Запросить отмену заявки
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/gen.access.api.request_cancellation.Request'
+      responses:
+        '200':
+          description: Действие выполнено.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.access.api.request_cancellation.Response200'
+      operationId: access_request_cancellation
+      tags:
+      - access
+  /access/resolve_cancellation:
+    post:
+      summary: Подтвердить или отклонить отмену
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/gen.access.api.resolve_cancellation.Request'
+      responses:
+        '200':
+          description: Действие выполнено.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.access.api.resolve_cancellation.Response200'
+      operationId: access_resolve_cancellation
+      tags:
+      - access
+  /access/respond_resident_offer:
+    post:
+      summary: Принять или отклонить предложение
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/gen.access.api.respond_resident_offer.Request'
+      responses:
+        '200':
+          description: Действие выполнено.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.access.api.respond_resident_offer.Response200'
+      operationId: access_respond_resident_offer
+      tags:
+      - access
+  /access/revoke_staff:
+    post:
+      summary: Отозвать права сотрудника УК
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/gen.access.api.revoke_staff.Request'
+      responses:
+        '200':
+          description: Действие выполнено.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.access.api.revoke_staff.Response200'
+      operationId: access_revoke_staff
+      tags:
+      - access
+  /access/search_houses:
+    get:
+      summary: Найти подключённые дома по адресу
+      parameters:
+      - name: text
+        in: query
+        required: true
+        schema:
+          type: string
+          minLength: 2
+      responses:
+        '200':
+          description: Совпадающие подключённые дома.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.access.api.search_houses.Response200'
+      operationId: access_search_houses
+      tags:
+      - access
+  /access/update_resident_request:
+    post:
+      summary: Исправить заявку жителя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/gen.access.api.update_resident_request.Request'
+      responses:
+        '200':
+          description: Действие выполнено.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.access.api.update_resident_request.Response200'
+      operationId: access_update_resident_request
+      tags:
+      - access
+  /auth/me:
+    get:
+      summary: Текущий аккаунт MAX
+      responses:
+        '200':
+          description: Данные текущего аккаунта.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.auth.api.me.Response200'
+      operationId: auth_me
+      tags:
+      - auth
+  /auth/verify_contact:
+    post:
+      summary: Подтвердить телефон через MAX Bridge
+      description: Проверяет подпись результата requestContact() для текущего пользователя
+        MAX.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/gen.auth.api.verify_contact.Request'
+      responses:
+        '200':
+          description: Телефон подтверждён и ожидавшие назначения сотрудника привязаны.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.auth.api.verify_contact.Response200'
+      operationId: auth_verify_contact
+      tags:
+      - auth
+  /drafts/get:
+    get:
+      summary: Получить свой черновик
+      description: Чужой или несуществующий черновик возвращает одинаковый ответ 404.
+      parameters:
+      - name: draft_id
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Черновик пользователя.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.drafts.api.get.Response200'
+        '401':
+          description: Требуется подтверждённый вход MAX.
+        '404':
+          description: Черновик не найден.
+      operationId: drafts_get
+      tags:
+      - drafts
+  /drafts/list:
+    get:
+      summary: Список собственных черновиков
+      description: Возвращает до 50 последних черновиков пользователя, включая уже
+        отправленные. Допустимые типы — issue_card и resident_request.
+      parameters:
+      - name: flow_kind
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/gen.drafts.internal.draft_data.FlowKind'
+      responses:
+        '200':
+          description: Черновики пользователя.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.drafts.api.list.Response200'
+        '401':
+          description: Требуется подтверждённый вход MAX.
+      operationId: drafts_list
+      tags:
+      - drafts
+  /drafts/save:
+    post:
+      summary: Создать или обновить черновик
+      description: При создании draft_id и revision отсутствуют; при обновлении обязательны
+        оба. Для обновления нужен текущий revision, после записи он увеличивается.
+        payload может быть частичным, но содержит только поля соответствующей ручки
+        создания обращения.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/gen.drafts.api.save.Request'
+      responses:
+        '200':
+          description: Черновик сохранён.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.drafts.api.save.Response200'
+        '400':
+          description: Некорректный тип, данные или revision.
+        '401':
+          description: Требуется подтверждённый вход MAX.
+        '404':
+          description: Черновик не найден или принадлежит другому пользователю.
+        '409':
+          description: Черновик уже отправлен или устарел revision.
+        '413':
+          description: Данные черновика слишком велики.
+      operationId: drafts_save
+      tags:
+      - drafts
+  /drafts/submit:
+    post:
+      summary: Пометить черновик отправленным
+      description: Только ставит отметку submitted_at после успешной подачи через
+        предметную ручку. Сам по себе не создаёт проблему или заявку. Нужен текущий
+        revision.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/gen.drafts.api.submit.Request'
+      responses:
+        '200':
+          description: Черновик помечен отправленным.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.drafts.api.submit.Response200'
+        '401':
+          description: Требуется подтверждённый вход MAX.
+        '404':
+          description: Черновик не найден или принадлежит другому пользователю.
+        '409':
+          description: Черновик уже отправлен или устарел revision.
+      operationId: drafts_submit
+      tags:
+      - drafts
   /example_codegen/client/create_request:
     post:
       requestBody:
@@ -77,6 +728,298 @@ paths:
       operationId: images_get_next
       tags:
       - images
+  /issues/add_comment:
+    post:
+      summary: Добавить комментарий к проблеме
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/gen.issues.api.add_comment.Request'
+      responses:
+        '201':
+          description: Комментарий добавлен.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.issues.api.add_comment.Response201'
+      operationId: issues_add_comment
+      tags:
+      - issues
+  /issues/create_card:
+    post:
+      summary: Сообщить о проблеме дома
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/gen.issues.api.create_card.Request'
+      responses:
+        '201':
+          description: Создана общая карточка.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.issues.api.create_card.Response201'
+      operationId: issues_create_card
+      tags:
+      - issues
+  /issues/edit_card:
+    post:
+      summary: Изменить сводку и область проблемы от имени УК
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/gen.issues.api.edit_card.Request'
+      responses:
+        '200':
+          description: Сводная карточка изменена; исходные обращения сохранены.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.issues.api.edit_card.Response200'
+      operationId: issues_edit_card
+      tags:
+      - issues
+  /issues/get_card:
+    get:
+      summary: Карточка проблемы с историей
+      parameters:
+      - name: card_id
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Доступная пользователю карточка.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.issues.api.get_card.Response200'
+      operationId: issues_get_card
+      tags:
+      - issues
+  /issues/list_cards:
+    get:
+      summary: Карточки проблем дома
+      parameters:
+      - name: house_id
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: include_closed
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+      responses:
+        '200':
+          description: Карточки, видимые пользователю.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.issues.api.list_cards.Response200'
+      operationId: issues_list_cards
+      tags:
+      - issues
+  /issues/list_categories:
+    get:
+      summary: Категории проблем
+      responses:
+        '200':
+          description: Действующие категории.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.issues.api.list_categories.Response200'
+      operationId: issues_list_categories
+      tags:
+      - issues
+  /issues/merge_cards:
+    post:
+      summary: Объединить дубли проблем сотрудником УК
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/gen.issues.api.merge_cards.Request'
+      responses:
+        '200':
+          description: Возвращена итоговая карточка.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.issues.api.merge_cards.Response200'
+      operationId: issues_merge_cards
+      tags:
+      - issues
+  /issues/reopen_card:
+    post:
+      summary: Переоткрыть закрытую проблему автором
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/gen.issues.api.reopen_card.Request'
+      responses:
+        '200':
+          description: Карточка снова открыта.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.issues.api.reopen_card.Response200'
+      operationId: issues_reopen_card
+      tags:
+      - issues
+  /issues/set_status:
+    post:
+      summary: Изменить статус проблемы от имени УК
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/gen.issues.api.set_status.Request'
+      responses:
+        '200':
+          description: Статус изменён.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.issues.api.set_status.Response200'
+      operationId: issues_set_status
+      tags:
+      - issues
+  /issues/suggest:
+    post:
+      summary: Предложить краткое название проблемы и похожие открытые карточки
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/gen.issues.api.suggest.Request'
+      responses:
+        '200':
+          description: Подсказка для проверки жителем; карточка не создаётся и не
+            объединяется.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.issues.api.suggest.Response200'
+      operationId: issues_suggest
+      tags:
+      - issues
+  /issues/support_card:
+    post:
+      summary: Поддержать существующую проблему
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/gen.issues.api.support_card.Request'
+      responses:
+        '200':
+          description: Поддержка учтена один раз.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.issues.api.support_card.Response200'
+      operationId: issues_support_card
+      tags:
+      - issues
+  /notifications/get_mute:
+    get:
+      summary: Текущая настройка сообщений бота по карточке или заявке
+      parameters:
+      - name: subject_kind
+        in: query
+        required: true
+        schema:
+          type: string
+          enum: &id003
+          - issue_card
+          - resident_request
+      - name: subject_id
+        in: query
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Настройка для текущего пользователя.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.notifications.api.get_mute.Response200'
+      operationId: notifications_get_mute
+      tags:
+      - notifications
+  /notifications/list:
+    get:
+      summary: Мои доступные уведомления
+      responses:
+        '200':
+          description: Только уведомления по объектам, которые пользователь может
+            видеть сейчас.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.notifications.api.list.Response200'
+      operationId: notifications_list
+      tags:
+      - notifications
+  /notifications/mark_read:
+    post:
+      summary: Отметить уведомление прочитанным
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/gen.notifications.api.mark_read.Request'
+      responses:
+        '200':
+          description: Уведомление отмечено прочитанным.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.notifications.api.mark_read.Response200'
+      operationId: notifications_mark_read
+      tags:
+      - notifications
+  /notifications/set_mute:
+    post:
+      summary: Включить или отключить личные сообщения бота по карточке или заявке
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/gen.notifications.api.set_mute.Request'
+      responses:
+        '200':
+          description: Настройка сохранена.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.notifications.api.set_mute.Response200'
+      operationId: notifications_set_mute
+      tags:
+      - notifications
   /service/health:
     get:
       summary: Проверить состояние сервиса
@@ -113,6 +1056,44 @@ paths:
       - service
 components:
   schemas:
+    gen.drafts.internal.draft_data.FlowKind:
+      type: string
+      enum:
+      - issue_card
+      - resident_request
+    gen.drafts.internal.draft_data.DraftData:
+      type: object
+      required:
+      - id
+      - flow_kind
+      - payload
+      - revision
+      - created_at
+      - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        flow_kind:
+          $ref: '#/components/schemas/gen.drafts.internal.draft_data.FlowKind'
+        payload:
+          type: object
+          additionalProperties: true
+        revision:
+          type: integer
+          minimum: 1
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        submitted_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
     gen.example_codegen.internal.request_data.RequestStatus:
       type: string
       enum:
@@ -128,6 +1109,1102 @@ components:
           type: integer
         status:
           $ref: '#/components/schemas/gen.example_codegen.internal.request_data.RequestStatus'
+    gen.issues.internal.issue_data.Category:
+      type: object
+      required:
+      - id
+      - code
+      - name
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+        name:
+          type: string
+    gen.issues.internal.issue_data.Card:
+      type: object
+      required:
+      - id
+      - house_id
+      - author_user_id
+      - category_id
+      - title
+      - status
+      - scope_all_house
+      - support_count
+      - version
+      - created_at
+      - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        house_id:
+          type: string
+          format: uuid
+        author_user_id:
+          type: string
+          format: uuid
+        category_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        status:
+          type: string
+        close_result:
+          type: string
+        current_note:
+          type: string
+        scope_all_house:
+          type: boolean
+        support_count:
+          type: integer
+        supported_by_me:
+          type: boolean
+        version:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    gen.issues.internal.issue_data.Target:
+      type: object
+      required:
+      - id
+      properties:
+        id:
+          type: string
+          format: uuid
+        entrance_number:
+          type: integer
+        apartment_id:
+          type: string
+          format: uuid
+        apartment_entrance_number:
+          type: integer
+        apartment_number:
+          type: integer
+    gen.issues.internal.issue_data.Report:
+      type: object
+      required:
+      - id
+      - author_user_id
+      - raw_description
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        author_user_id:
+          type: string
+          format: uuid
+        raw_description:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    gen.issues.internal.issue_data.Message:
+      type: object
+      required:
+      - id
+      - author_user_id
+      - kind
+      - body
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        author_user_id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+        body:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    gen.issues.internal.issue_data.HistoryEvent:
+      type: object
+      required:
+      - id
+      - action
+      - actor_user_id
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        action:
+          type: string
+        actor_user_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        note:
+          type: string
+        close_result:
+          type: string
+        source_card_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+    gen.access.api.add_discussion_message.Request:
+      type: object
+      required:
+      - request_kind
+      - request_id
+      - text
+      properties:
+        request_kind:
+          type: string
+          enum:
+          - company_registration
+          - house_addition
+          - resident
+        request_id:
+          type: string
+          format: uuid
+        text:
+          type: string
+          minLength: 1
+    gen.access.api.add_discussion_message.Response201:
+      type: object
+      required:
+      - id
+      - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        related_id:
+          type: string
+          format: uuid
+    gen.access.api.assign_staff.Request:
+      type: object
+      required:
+      - company_id
+      - phone_number
+      - can_manage_staff
+      - can_manage_residents
+      - can_manage_issues
+      properties:
+        company_id:
+          type: string
+          format: uuid
+        phone_number:
+          type: string
+          minLength: 1
+        can_manage_staff:
+          type: boolean
+        can_manage_residents:
+          type: boolean
+        can_manage_issues:
+          type: boolean
+    gen.access.api.assign_staff.Response200:
+      type: object
+      required:
+      - id
+      - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        related_id:
+          type: string
+          format: uuid
+    gen.access.api.change_request_status.Request:
+      type: object
+      required:
+      - request_kind
+      - request_id
+      - status
+      properties:
+        request_kind:
+          type: string
+          enum:
+          - company_registration
+          - house_addition
+          - resident
+        request_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+          - open
+          - reviewing
+          - needs_info
+    gen.access.api.change_request_status.Response200:
+      type: object
+      required:
+      - id
+      - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+    gen.access.api.change_resident_grant.Request:
+      type: object
+      required:
+      - grant_id
+      - action
+      properties:
+        grant_id:
+          type: string
+          format: uuid
+        action:
+          type: string
+          enum:
+          - extend
+          - revoke
+        valid_to:
+          type: string
+          format: date-time
+        reason:
+          type: string
+    gen.access.api.change_resident_grant.Response200:
+      type: object
+      required:
+      - id
+      - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        related_id:
+          type: string
+          format: uuid
+    gen.access.api.create_company_registration.Request:
+      type: object
+      required:
+      - phone_number
+      - free_text
+      properties:
+        phone_number:
+          type: string
+          minLength: 1
+        free_text:
+          type: string
+          minLength: 1
+        proposed_company_name:
+          type: string
+    gen.access.api.create_company_registration.Response201:
+      type: object
+      required:
+      - id
+      - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        related_id:
+          type: string
+          format: uuid
+    gen.access.api.create_house_request.Request:
+      type: object
+      required:
+      - entered_address
+      properties:
+        registration_request_id:
+          type: string
+          format: uuid
+        company_id:
+          type: string
+          format: uuid
+        entered_address:
+          type: string
+          minLength: 1
+        free_text:
+          type: string
+    gen.access.api.create_house_request.Response201:
+      type: object
+      required:
+      - id
+      - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        related_id:
+          type: string
+          format: uuid
+    gen.access.api.create_resident_offer.Request:
+      type: object
+      required:
+      - house_id
+      - entrance_number
+      - apartment_number
+      - phone_number
+      properties:
+        house_id:
+          type: string
+          format: uuid
+        entrance_number:
+          type: integer
+          minimum: 1
+        apartment_number:
+          type: integer
+          minimum: 1
+        phone_number:
+          type: string
+          minLength: 1
+        valid_to:
+          type: string
+          format: date-time
+    gen.access.api.create_resident_offer.Response201:
+      type: object
+      required:
+      - id
+      - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        related_id:
+          type: string
+          format: uuid
+    gen.access.api.create_resident_request.Request:
+      type: object
+      required:
+      - house_id
+      - full_name
+      - entrance_number
+      - apartment_number
+      properties:
+        house_id:
+          type: string
+          format: uuid
+        full_name:
+          type: string
+          minLength: 1
+        entrance_number:
+          type: integer
+          minimum: 1
+        apartment_number:
+          type: integer
+          minimum: 1
+    gen.access.api.create_resident_request.Response201:
+      type: object
+      required:
+      - id
+      - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        related_id:
+          type: string
+          format: uuid
+    gen.access.api.decide_company_registration.Request:
+      type: object
+      required:
+      - request_id
+      - outcome
+      - decision_note
+      properties:
+        request_id:
+          type: string
+          format: uuid
+        outcome:
+          type: string
+          enum:
+          - approved
+          - rejected
+        decision_note:
+          type: string
+          minLength: 1
+        display_name:
+          type: string
+    gen.access.api.decide_company_registration.Response200:
+      type: object
+      required:
+      - id
+      - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        related_id:
+          type: string
+          format: uuid
+    gen.access.api.decide_house_request.Request:
+      type: object
+      required:
+      - request_id
+      - outcome
+      - decision_note
+      properties:
+        request_id:
+          type: string
+          format: uuid
+        outcome:
+          type: string
+          enum:
+          - approved
+          - rejected
+        decision_note:
+          type: string
+          minLength: 1
+        address_key:
+          type: string
+        entrance_count:
+          type: integer
+          minimum: 1
+    gen.access.api.decide_house_request.Response200:
+      type: object
+      required:
+      - id
+      - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        related_id:
+          type: string
+          format: uuid
+    gen.access.api.decide_resident_request.Request:
+      type: object
+      required:
+      - request_id
+      - outcome
+      - decision_note
+      properties:
+        request_id:
+          type: string
+          format: uuid
+        outcome:
+          type: string
+          enum:
+          - granted
+          - denied
+        decision_note:
+          type: string
+          minLength: 1
+        valid_to:
+          type: string
+          format: date-time
+    gen.access.api.decide_resident_request.Response200:
+      type: object
+      required:
+      - id
+      - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        related_id:
+          type: string
+          format: uuid
+    gen.access.api.get_request.Response200:
+      type: object
+      required:
+      - data
+      properties:
+        data:
+          type: object
+          additionalProperties: true
+    gen.access.api.get_request.QueryParams:
+      type: object
+      properties:
+        request_kind:
+          type: string
+          enum: *id001
+        request_id:
+          type: string
+          format: uuid
+      required:
+      - request_kind
+      - request_id
+    gen.access.api.list_company_houses.Response200:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/gen.access.api.list_company_houses.HouseItem'
+    gen.access.api.list_company_houses.HouseItem:
+      type: object
+      required:
+      - id
+      - address_display
+      properties:
+        id:
+          type: string
+          format: uuid
+        address_display:
+          type: string
+        entrance_count:
+          type: integer
+    gen.access.api.list_company_houses.QueryParams:
+      type: object
+      properties:
+        company_id:
+          type: string
+          format: uuid
+      required:
+      - company_id
+    gen.access.api.list_company_offers.OfferItem:
+      type: object
+      required:
+      - id
+      - house_id
+      - address_display
+      - entrance_number
+      - apartment_number
+      - phone_number
+      - status
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        house_id:
+          type: string
+          format: uuid
+        address_display:
+          type: string
+        entrance_number:
+          type: integer
+        apartment_number:
+          type: integer
+        phone_number:
+          type: string
+        status:
+          type: string
+        proposed_access_until:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+    gen.access.api.list_company_offers.Response200:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/gen.access.api.list_company_offers.OfferItem'
+    gen.access.api.list_company_offers.QueryParams:
+      type: object
+      properties:
+        company_id:
+          type: string
+          format: uuid
+        house_id:
+          type: string
+          format: uuid
+      required:
+      - company_id
+    gen.access.api.list_grants.Response200:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/gen.access.api.list_grants.GrantItem'
+    gen.access.api.list_grants.GrantItem:
+      type: object
+      required:
+      - id
+      - apartment_id
+      - house_id
+      - address_display
+      - entrance_number
+      - apartment_number
+      - valid_from
+      - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        apartment_id:
+          type: string
+          format: uuid
+        house_id:
+          type: string
+          format: uuid
+        address_display:
+          type: string
+        entrance_number:
+          type: integer
+        apartment_number:
+          type: integer
+        valid_from:
+          type: string
+          format: date-time
+        valid_to:
+          type: string
+          format: date-time
+        revoked_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum:
+          - active
+          - expired
+          - revoked
+    gen.access.api.list_offers.Response200:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/gen.access.api.list_offers.OfferItem'
+    gen.access.api.list_offers.OfferItem:
+      type: object
+      required:
+      - id
+      - house_id
+      - address_display
+      - apartment_id
+      - entrance_number
+      - apartment_number
+      - status
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        house_id:
+          type: string
+          format: uuid
+        address_display:
+          type: string
+        apartment_id:
+          type: string
+          format: uuid
+        entrance_number:
+          type: integer
+        apartment_number:
+          type: integer
+        status:
+          type: string
+          enum:
+          - pending
+          - accepted
+          - declined
+          - cancelled
+        proposed_access_until:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+    gen.access.api.list_requests.Response200:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    gen.access.api.list_requests.QueryParams:
+      type: object
+      properties:
+        request_kind:
+          type: string
+          enum: *id002
+        house_id:
+          type: string
+          format: uuid
+      required:
+      - request_kind
+    gen.access.api.list_residents.Response200:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    gen.access.api.list_residents.QueryParams:
+      type: object
+      properties:
+        company_id:
+          type: string
+          format: uuid
+        house_id:
+          type: string
+          format: uuid
+      required:
+      - company_id
+    gen.access.api.list_staff.Response200:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    gen.access.api.list_staff.QueryParams:
+      type: object
+      properties:
+        company_id:
+          type: string
+          format: uuid
+      required:
+      - company_id
+    gen.access.api.request_cancellation.Request:
+      type: object
+      required:
+      - request_kind
+      - request_id
+      properties:
+        request_kind:
+          type: string
+          enum:
+          - company_registration
+          - house_addition
+          - resident
+        request_id:
+          type: string
+          format: uuid
+    gen.access.api.request_cancellation.Response200:
+      type: object
+      required:
+      - id
+      - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        related_id:
+          type: string
+          format: uuid
+    gen.access.api.resolve_cancellation.Request:
+      type: object
+      required:
+      - request_kind
+      - request_id
+      - accept
+      properties:
+        request_kind:
+          type: string
+          enum:
+          - company_registration
+          - house_addition
+          - resident
+        request_id:
+          type: string
+          format: uuid
+        accept:
+          type: boolean
+    gen.access.api.resolve_cancellation.Response200:
+      type: object
+      required:
+      - id
+      - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        related_id:
+          type: string
+          format: uuid
+    gen.access.api.respond_resident_offer.Request:
+      type: object
+      required:
+      - offer_id
+      - accept
+      properties:
+        offer_id:
+          type: string
+          format: uuid
+        accept:
+          type: boolean
+    gen.access.api.respond_resident_offer.Response200:
+      type: object
+      required:
+      - id
+      - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        related_id:
+          type: string
+          format: uuid
+    gen.access.api.revoke_staff.Request:
+      type: object
+      required:
+      - assignment_id
+      properties:
+        assignment_id:
+          type: string
+          format: uuid
+    gen.access.api.revoke_staff.Response200:
+      type: object
+      required:
+      - id
+      - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        related_id:
+          type: string
+          format: uuid
+    gen.access.api.search_houses.Response200:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/gen.access.api.search_houses.House'
+    gen.access.api.search_houses.House:
+      type: object
+      required:
+      - id
+      - address_display
+      properties:
+        id:
+          type: string
+          format: uuid
+        address_display:
+          type: string
+        entrance_count:
+          type: integer
+    gen.access.api.search_houses.QueryParams:
+      type: object
+      properties:
+        text:
+          type: string
+          minLength: 2
+      required:
+      - text
+    gen.access.api.update_resident_request.Request:
+      type: object
+      required:
+      - request_id
+      - full_name
+      - entrance_number
+      - apartment_number
+      properties:
+        request_id:
+          type: string
+          format: uuid
+        full_name:
+          type: string
+          minLength: 1
+        entrance_number:
+          type: integer
+          minimum: 1
+        apartment_number:
+          type: integer
+          minimum: 1
+    gen.access.api.update_resident_request.Response200:
+      type: object
+      required:
+      - id
+      - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        related_id:
+          type: string
+          format: uuid
+    gen.auth.api.me.Response200:
+      type: object
+      required:
+      - id
+      - kind
+      - phone_verified
+      - staff_assignments
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+        full_name:
+          type: string
+        phone_number:
+          type: string
+        phone_verified:
+          type: boolean
+        staff_assignments:
+          type: array
+          items:
+            $ref: '#/components/schemas/gen.auth.api.me.StaffAssignment'
+    gen.auth.api.me.StaffAssignment:
+      type: object
+      required:
+      - company_id
+      - company_name
+      - can_manage_staff
+      - can_manage_residents
+      - can_manage_issues
+      properties:
+        company_id:
+          type: string
+          format: uuid
+        company_name:
+          type: string
+        can_manage_staff:
+          type: boolean
+        can_manage_residents:
+          type: boolean
+        can_manage_issues:
+          type: boolean
+    gen.auth.api.verify_contact.Request:
+      type: object
+      required:
+      - phone
+      - auth_date
+      - signature
+      properties:
+        phone:
+          type: string
+          minLength: 1
+        auth_date:
+          type: string
+          minLength: 1
+        signature:
+          type: string
+          minLength: 1
+    gen.auth.api.verify_contact.Response200:
+      type: object
+      required:
+      - phone_number
+      - kind
+      properties:
+        phone_number:
+          type: string
+        kind:
+          type: string
+    gen.drafts.api.get.Response200:
+      type: object
+      required:
+      - draft
+      properties:
+        draft:
+          $ref: '#/components/schemas/gen.drafts.internal.draft_data.DraftData'
+    gen.drafts.api.get.QueryParams:
+      type: object
+      properties:
+        draft_id:
+          type: string
+          format: uuid
+      required:
+      - draft_id
+    gen.drafts.api.list.Response200:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/gen.drafts.internal.draft_data.DraftData'
+    gen.drafts.api.list.QueryParams:
+      type: object
+      properties:
+        flow_kind:
+          $ref: '#/components/schemas/gen.drafts.internal.draft_data.FlowKind'
+      required: []
+    gen.drafts.api.save.Request:
+      type: object
+      required:
+      - flow_kind
+      - payload
+      properties:
+        draft_id:
+          type: string
+          format: uuid
+        revision:
+          type: integer
+          minimum: 1
+        flow_kind:
+          $ref: '#/components/schemas/gen.drafts.internal.draft_data.FlowKind'
+        payload:
+          type: object
+          additionalProperties: true
+    gen.drafts.api.save.Response200:
+      type: object
+      required:
+      - draft
+      properties:
+        draft:
+          $ref: '#/components/schemas/gen.drafts.internal.draft_data.DraftData'
+    gen.drafts.api.submit.Request:
+      type: object
+      required:
+      - draft_id
+      - revision
+      properties:
+        draft_id:
+          type: string
+          format: uuid
+        revision:
+          type: integer
+          minimum: 1
+    gen.drafts.api.submit.Response200:
+      type: object
+      required:
+      - draft
+      properties:
+        draft:
+          $ref: '#/components/schemas/gen.drafts.internal.draft_data.DraftData'
     gen.example_codegen.api.client.create_request.Request:
       type: object
       required:
@@ -201,6 +2278,441 @@ components:
           maxLength: 255
           description: Имя картинки, показанной сейчас.
       required: []
+    gen.issues.api.add_comment.Request:
+      type: object
+      required:
+      - card_id
+      - text
+      properties:
+        card_id:
+          type: string
+          format: uuid
+        text:
+          type: string
+          minLength: 1
+    gen.issues.api.add_comment.Response201:
+      type: object
+      required:
+      - message
+      properties:
+        message:
+          $ref: '#/components/schemas/gen.issues.internal.issue_data.Message'
+    gen.issues.api.create_card.TargetApartment:
+      type: object
+      required:
+      - entrance_number
+      - apartment_number
+      properties:
+        entrance_number:
+          type: integer
+          minimum: 1
+        apartment_number:
+          type: integer
+          minimum: 1
+    gen.issues.api.create_card.Request:
+      type: object
+      required:
+      - house_id
+      - category_id
+      - title
+      - description
+      - scope_all_house
+      properties:
+        house_id:
+          type: string
+          format: uuid
+        category_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          minLength: 1
+        description:
+          type: string
+          minLength: 1
+        scope_all_house:
+          type: boolean
+        target_entrances:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+        target_apartments:
+          type: array
+          items:
+            $ref: '#/components/schemas/gen.issues.api.create_card.TargetApartment'
+    gen.issues.api.create_card.Response201:
+      type: object
+      required:
+      - card
+      properties:
+        card:
+          $ref: '#/components/schemas/gen.issues.internal.issue_data.Card'
+    gen.issues.api.edit_card.TargetApartment:
+      type: object
+      required:
+      - entrance_number
+      - apartment_number
+      properties:
+        entrance_number:
+          type: integer
+          minimum: 1
+        apartment_number:
+          type: integer
+          minimum: 1
+    gen.issues.api.edit_card.Request:
+      type: object
+      required:
+      - card_id
+      - expected_version
+      - category_id
+      - title
+      - scope_all_house
+      properties:
+        card_id:
+          type: string
+          format: uuid
+        expected_version:
+          type: integer
+          minimum: 1
+        category_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          minLength: 1
+        scope_all_house:
+          type: boolean
+        target_entrances:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+        target_apartments:
+          type: array
+          items:
+            $ref: '#/components/schemas/gen.issues.api.edit_card.TargetApartment'
+    gen.issues.api.edit_card.Response200:
+      type: object
+      required:
+      - card
+      properties:
+        card:
+          $ref: '#/components/schemas/gen.issues.internal.issue_data.Card'
+    gen.issues.api.get_card.Response200:
+      type: object
+      required:
+      - card
+      - targets
+      - reports
+      - messages
+      - history
+      properties:
+        card:
+          $ref: '#/components/schemas/gen.issues.internal.issue_data.Card'
+        targets:
+          type: array
+          items:
+            $ref: '#/components/schemas/gen.issues.internal.issue_data.Target'
+        reports:
+          type: array
+          items:
+            $ref: '#/components/schemas/gen.issues.internal.issue_data.Report'
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/gen.issues.internal.issue_data.Message'
+        history:
+          type: array
+          items:
+            $ref: '#/components/schemas/gen.issues.internal.issue_data.HistoryEvent'
+    gen.issues.api.get_card.QueryParams:
+      type: object
+      properties:
+        card_id:
+          type: string
+          format: uuid
+      required:
+      - card_id
+    gen.issues.api.list_cards.Response200:
+      type: object
+      required:
+      - cards
+      properties:
+        cards:
+          type: array
+          items:
+            $ref: '#/components/schemas/gen.issues.internal.issue_data.Card'
+    gen.issues.api.list_cards.QueryParams:
+      type: object
+      properties:
+        house_id:
+          type: string
+          format: uuid
+        include_closed:
+          type: boolean
+          default: false
+      required:
+      - house_id
+    gen.issues.api.list_categories.Response200:
+      type: object
+      required:
+      - categories
+      properties:
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/gen.issues.internal.issue_data.Category'
+    gen.issues.api.merge_cards.Request:
+      type: object
+      required:
+      - left_id
+      - right_id
+      - final_title
+      - final_status
+      properties:
+        left_id:
+          type: string
+          format: uuid
+        right_id:
+          type: string
+          format: uuid
+        final_title:
+          type: string
+          minLength: 1
+        final_status:
+          type: string
+          enum:
+          - open
+          - reviewing
+          - needs_info
+          - in_progress
+        final_note:
+          type: string
+    gen.issues.api.merge_cards.Response200:
+      type: object
+      required:
+      - card
+      properties:
+        card:
+          $ref: '#/components/schemas/gen.issues.internal.issue_data.Card'
+    gen.issues.api.reopen_card.Request:
+      type: object
+      required:
+      - card_id
+      - comment
+      properties:
+        card_id:
+          type: string
+          format: uuid
+        comment:
+          type: string
+          minLength: 1
+    gen.issues.api.reopen_card.Response200:
+      type: object
+      required:
+      - card
+      properties:
+        card:
+          $ref: '#/components/schemas/gen.issues.internal.issue_data.Card'
+    gen.issues.api.set_status.Request:
+      type: object
+      required:
+      - card_id
+      - status
+      properties:
+        card_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+          - open
+          - reviewing
+          - needs_info
+          - in_progress
+          - closed
+        note:
+          type: string
+        close_result:
+          type: string
+          enum:
+          - solved
+          - invalid
+    gen.issues.api.set_status.Response200:
+      type: object
+      required:
+      - card
+      properties:
+        card:
+          $ref: '#/components/schemas/gen.issues.internal.issue_data.Card'
+    gen.issues.api.suggest.Request:
+      type: object
+      required:
+      - house_id
+      - description
+      properties:
+        house_id:
+          type: string
+          format: uuid
+        category_id:
+          type: string
+          format: uuid
+        description:
+          type: string
+          minLength: 1
+          maxLength: 1500
+    gen.issues.api.suggest.Candidate:
+      type: object
+      required:
+      - id
+      - title
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+    gen.issues.api.suggest.Response200:
+      type: object
+      required:
+      - suggested_title
+      - similar_card_ids
+      - candidates
+      - source
+      properties:
+        suggested_title:
+          type: string
+        similar_card_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        candidates:
+          type: array
+          items:
+            $ref: '#/components/schemas/gen.issues.api.suggest.Candidate'
+        source:
+          type: string
+          enum:
+          - groq
+          - local
+    gen.issues.api.support_card.Request:
+      type: object
+      required:
+      - card_id
+      properties:
+        card_id:
+          type: string
+          format: uuid
+        description:
+          type: string
+    gen.issues.api.support_card.Response200:
+      type: object
+      required:
+      - card
+      properties:
+        card:
+          $ref: '#/components/schemas/gen.issues.internal.issue_data.Card'
+        report_id:
+          type: string
+          format: uuid
+          nullable: true
+    gen.notifications.api.get_mute.Response200:
+      type: object
+      required:
+      - is_muted
+      properties:
+        is_muted:
+          type: boolean
+    gen.notifications.api.get_mute.QueryParams:
+      type: object
+      properties:
+        subject_kind:
+          type: string
+          enum: *id003
+        subject_id:
+          type: string
+          format: uuid
+      required:
+      - subject_kind
+      - subject_id
+    gen.notifications.api.list.Item:
+      type: object
+      required:
+      - id
+      - subject_kind
+      - subject_id
+      - event_kind
+      - created_at
+      - bot_state
+      properties:
+        id:
+          type: string
+          format: uuid
+        subject_kind:
+          type: string
+        subject_id:
+          type: string
+          format: uuid
+        event_kind:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        read_at:
+          type: string
+          format: date-time
+        bot_state:
+          type: string
+    gen.notifications.api.list.Response200:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/gen.notifications.api.list.Item'
+    gen.notifications.api.mark_read.Request:
+      type: object
+      required:
+      - notification_id
+      properties:
+        notification_id:
+          type: string
+          format: uuid
+    gen.notifications.api.mark_read.Response200:
+      type: object
+      required:
+      - read
+      properties:
+        read:
+          type: boolean
+    gen.notifications.api.set_mute.Request:
+      type: object
+      required:
+      - subject_kind
+      - subject_id
+      - is_muted
+      properties:
+        subject_kind:
+          type: string
+          enum:
+          - issue_card
+          - resident_request
+        subject_id:
+          type: string
+          format: uuid
+        is_muted:
+          type: boolean
+    gen.notifications.api.set_mute.Response200:
+      type: object
+      required:
+      - is_muted
+      properties:
+        is_muted:
+          type: boolean
     gen.service.api.health.Response200:
       type: object
       required:

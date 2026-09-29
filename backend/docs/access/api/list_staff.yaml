@@ -1,0 +1,27 @@
+path: /access/list_staff
+method: get
+summary: Получить сотрудников своей УК
+parameters:
+  - name: company_id
+    in: query
+    required: true
+    schema:
+      type: string
+      format: uuid
+responses:
+  '200':
+    description: Сотрудники и назначенные им права.
+    content:
+      application/json:
+        schema:
+          $ref: '#/schemas/Response200'
+schemas:
+  Response200:
+    type: object
+    required: [items]
+    properties:
+      items:
+        type: array
+        items:
+          type: object
+          additionalProperties: true

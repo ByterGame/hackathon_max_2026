@@ -1,0 +1,45 @@
+path: /access/update_resident_request
+method: post
+summary: Исправить заявку жителя
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema:
+        $ref: '#/schemas/Request'
+responses:
+  '200':
+    description: Действие выполнено.
+    content:
+      application/json:
+        schema:
+          $ref: '#/schemas/Response200'
+schemas:
+  Request:
+    type: object
+    required: [request_id, full_name, entrance_number, apartment_number]
+    properties:
+      request_id:
+        type: string
+        format: uuid
+      full_name:
+        type: string
+        minLength: 1
+      entrance_number:
+        type: integer
+        minimum: 1
+      apartment_number:
+        type: integer
+        minimum: 1
+  Response200:
+    type: object
+    required: [id, status]
+    properties:
+      id:
+        type: string
+        format: uuid
+      status:
+        type: string
+      related_id:
+        type: string
+        format: uuid

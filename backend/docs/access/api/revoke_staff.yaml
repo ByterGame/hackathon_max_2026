@@ -1,0 +1,36 @@
+path: /access/revoke_staff
+method: post
+summary: Отозвать права сотрудника УК
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema:
+        $ref: '#/schemas/Request'
+responses:
+  '200':
+    description: Действие выполнено.
+    content:
+      application/json:
+        schema:
+          $ref: '#/schemas/Response200'
+schemas:
+  Request:
+    type: object
+    required: [assignment_id]
+    properties:
+      assignment_id:
+        type: string
+        format: uuid
+  Response200:
+    type: object
+    required: [id, status]
+    properties:
+      id:
+        type: string
+        format: uuid
+      status:
+        type: string
+      related_id:
+        type: string
+        format: uuid

@@ -1,0 +1,30 @@
+path: /drafts/submit
+method: post
+summary: Пометить черновик отправленным
+description: Только ставит отметку submitted_at после успешной подачи через предметную ручку. Сам по себе не создаёт проблему или заявку. Нужен текущий revision.
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema: {$ref: '#/schemas/Request'}
+responses:
+  '200':
+    description: Черновик помечен отправленным.
+    content:
+      application/json:
+        schema: {$ref: '#/schemas/Response200'}
+  '401': {description: Требуется подтверждённый вход MAX.}
+  '404': {description: Черновик не найден или принадлежит другому пользователю.}
+  '409': {description: Черновик уже отправлен или устарел revision.}
+schemas:
+  Request:
+    type: object
+    required: [draft_id, revision]
+    properties:
+      draft_id: {type: string, format: uuid}
+      revision: {type: integer, minimum: 1}
+  Response200:
+    type: object
+    required: [draft]
+    properties:
+      draft: {$ref: '../internal/draft_data.yaml#/schemas/DraftData'}

@@ -1,0 +1,64 @@
+schemas:
+  Category:
+    type: object
+    required: [id, code, name]
+    properties:
+      id: {type: string, format: uuid}
+      code: {type: string}
+      name: {type: string}
+  Card:
+    type: object
+    required: [id, house_id, author_user_id, category_id, title, status, scope_all_house, support_count, version, created_at, updated_at]
+    properties:
+      id: {type: string, format: uuid}
+      house_id: {type: string, format: uuid}
+      author_user_id: {type: string, format: uuid}
+      category_id: {type: string, format: uuid}
+      title: {type: string}
+      status: {type: string}
+      close_result: {type: string}
+      current_note: {type: string}
+      scope_all_house: {type: boolean}
+      support_count: {type: integer}
+      supported_by_me: {type: boolean}
+      version: {type: integer}
+      created_at: {type: string, format: date-time}
+      updated_at: {type: string, format: date-time}
+  Target:
+    type: object
+    required: [id]
+    properties:
+      id: {type: string, format: uuid}
+      entrance_number: {type: integer}
+      apartment_id: {type: string, format: uuid}
+      apartment_entrance_number: {type: integer}
+      apartment_number: {type: integer}
+  Report:
+    type: object
+    required: [id, author_user_id, raw_description, created_at]
+    properties:
+      id: {type: string, format: uuid}
+      author_user_id: {type: string, format: uuid}
+      raw_description: {type: string}
+      created_at: {type: string, format: date-time}
+  Message:
+    type: object
+    required: [id, author_user_id, kind, body, created_at]
+    properties:
+      id: {type: string, format: uuid}
+      author_user_id: {type: string, format: uuid}
+      kind: {type: string}
+      body: {type: string}
+      created_at: {type: string, format: date-time}
+  HistoryEvent:
+    type: object
+    required: [id, action, actor_user_id, created_at]
+    properties:
+      id: {type: string, format: uuid}
+      action: {type: string}
+      actor_user_id: {type: string, format: uuid}
+      status: {type: string}
+      note: {type: string}
+      close_result: {type: string}
+      source_card_id: {type: string, format: uuid}
+      created_at: {type: string, format: date-time}

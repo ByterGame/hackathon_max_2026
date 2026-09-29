@@ -1,0 +1,25 @@
+path: /notifications/mark_read
+method: post
+summary: Отметить уведомление прочитанным
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema: {$ref: '#/schemas/Request'}
+responses:
+  '200':
+    description: Уведомление отмечено прочитанным.
+    content:
+      application/json:
+        schema: {$ref: '#/schemas/Response200'}
+schemas:
+  Request:
+    type: object
+    required: [notification_id]
+    properties:
+      notification_id: {type: string, format: uuid}
+  Response200:
+    type: object
+    required: [read]
+    properties:
+      read: {type: boolean}

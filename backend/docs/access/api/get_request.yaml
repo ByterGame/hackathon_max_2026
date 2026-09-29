@@ -1,0 +1,31 @@
+path: /access/get_request
+method: get
+summary: Получить свою или доступную заявку
+parameters:
+  - name: request_kind
+    in: query
+    required: true
+    schema:
+      type: string
+      enum: [company_registration, house_addition, resident]
+  - name: request_id
+    in: query
+    required: true
+    schema:
+      type: string
+      format: uuid
+responses:
+  '200':
+    description: Заявка с обсуждением.
+    content:
+      application/json:
+        schema:
+          $ref: '#/schemas/Response200'
+schemas:
+  Response200:
+    type: object
+    required: [data]
+    properties:
+      data:
+        type: object
+        additionalProperties: true

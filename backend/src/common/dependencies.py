@@ -1,15 +1,11 @@
-"""Ресурсы, передаваемые HTTP-обработчикам через FastAPI."""
+"""Shared FastAPI dependencies for database-backed handlers."""
 
-from collections.abc import AsyncIterator
 from typing import Annotated
 
-import asyncpg
-from fastapi import Depends, Request
+from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.db.session import get_session
 
 
-async def get_db_connection(request: Request) -> AsyncIterator[asyncpg.Connection]:
-    async with request.app.state.db_pool.acquire() as connection:
-        yield connection
-
-
-DBConnection = Annotated[asyncpg.Connection, Depends(get_db_connection)]
+DBSession = Annotated[AsyncSession, Depends(get_session)]

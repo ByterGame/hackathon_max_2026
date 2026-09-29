@@ -1,0 +1,32 @@
+path: /issues/set_status
+method: post
+summary: Изменить статус проблемы от имени УК
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema: {$ref: '#/schemas/Request'}
+responses:
+  '200':
+    description: Статус изменён.
+    content:
+      application/json:
+        schema: {$ref: '#/schemas/Response200'}
+schemas:
+  Request:
+    type: object
+    required: [card_id, status]
+    properties:
+      card_id: {type: string, format: uuid}
+      status:
+        type: string
+        enum: [open, reviewing, needs_info, in_progress, closed]
+      note: {type: string}
+      close_result:
+        type: string
+        enum: [solved, invalid]
+  Response200:
+    type: object
+    required: [card]
+    properties:
+      card: {$ref: '../internal/issue_data.yaml#/schemas/Card'}

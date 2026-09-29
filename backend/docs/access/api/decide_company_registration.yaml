@@ -1,0 +1,44 @@
+path: /access/decide_company_registration
+method: post
+summary: Решить обращение о регистрации УК
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema:
+        $ref: '#/schemas/Request'
+responses:
+  '200':
+    description: Действие выполнено.
+    content:
+      application/json:
+        schema:
+          $ref: '#/schemas/Response200'
+schemas:
+  Request:
+    type: object
+    required: [request_id, outcome, decision_note]
+    properties:
+      request_id:
+        type: string
+        format: uuid
+      outcome:
+        type: string
+        enum: [approved, rejected]
+      decision_note:
+        type: string
+        minLength: 1
+      display_name:
+        type: string
+  Response200:
+    type: object
+    required: [id, status]
+    properties:
+      id:
+        type: string
+        format: uuid
+      status:
+        type: string
+      related_id:
+        type: string
+        format: uuid

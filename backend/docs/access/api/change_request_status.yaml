@@ -1,0 +1,40 @@
+path: /access/change_request_status
+method: post
+summary: Изменить рабочий статус заявки
+description: Поддержка меняет статус обращений УК, сотрудник с правом на жильцов — статус заявки жителя.
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema:
+        $ref: '#/schemas/Request'
+responses:
+  '200':
+    description: Рабочий статус изменён.
+    content:
+      application/json:
+        schema:
+          $ref: '#/schemas/Response200'
+schemas:
+  Request:
+    type: object
+    required: [request_kind, request_id, status]
+    properties:
+      request_kind:
+        type: string
+        enum: [company_registration, house_addition, resident]
+      request_id:
+        type: string
+        format: uuid
+      status:
+        type: string
+        enum: [open, reviewing, needs_info]
+  Response200:
+    type: object
+    required: [id, status]
+    properties:
+      id:
+        type: string
+        format: uuid
+      status:
+        type: string
