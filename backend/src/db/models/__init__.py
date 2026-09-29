@@ -8,6 +8,7 @@ from .access import (
     ResidentRequest,
 )
 from .base import Base
+from .bot_dialog import BotDialog
 from .housing import Apartment, Company, House
 from .identity import StaffAssignment, User
 from .issues import IssueCard, IssueCategory, IssueMessage, IssueReport, IssueSupport, IssueTarget
@@ -17,6 +18,7 @@ __all__ = [
     "Apartment",
     "AuditEvent",
     "Base",
+    "BotDialog",
     "BotMute",
     "CommandReceipt",
     "Company",
