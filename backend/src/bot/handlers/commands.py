@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 
 from maxapi import Router
 from maxapi.enums import ChatType
-from maxapi.types import MessageCallback, MessageCreated
+from maxapi.types import BotStarted, MessageCallback, MessageCreated
 from maxapi.types.attachments import Contact
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -578,10 +578,70 @@ def build_router(
             trace.finished()
             current_request_id.reset(context_token)
 
+    @router.bot_started()
+    async def on_started(event: BotStarted) -> None:
+        trace = UpdateTrace(
+            logger,
+            event_type="bot_started",
+            message_id=f"bot_started:{event.chat_id}:{event.timestamp}",
+        )
+        context_token = current_request_id.set(trace.request_id)
+        trace.received()
+        try:
+            sender = event.user
+            if sender.is_bot:
+                trace.result = "ignored_bot"
+                return
+
+            reply = UiReply("Не удалось открыть меню. Попробуйте позже.")
+            async with session_factory() as session:
+                try:
+                    trace.phase = "resolve_actor"
+                    full_name = " ".join(
+                        item for item in (sender.first_name, sender.last_name) if item
+                    )
+                    actor = await get_or_create_user(
+                        session, str(sender.user_id), full_name=full_name or None
+                    )
+                    trace.actor_id = str(actor.id)
+                    trace.phase = "reserve_update"
+                    if not await _reserve_message(
+                        session,
+                        user_id=actor.id,
+                        message_id=f"bot_started:{event.chat_id}:{event.timestamp}",
+                        content="start",
+                    ):
+                        trace.result = "duplicate"
+                        return
+                    trace.phase = "route_start"
+                    await clear_dialog(session, actor.id)
+                    reply = _home(actor)
+                    if session.in_transaction():
+                        trace.phase = "commit"
+                        await session.commit()
+                except Exception as error:
+                    await session.rollback()
+                    trace.fail(error, result="failed")
+
+            if trace.result == "processed":
+                trace.phase = "send_reply"
+            await event.send(
+                text=reply.text[:3900], attachments=keyboard_for(reply)
+            )
+        except asyncio.CancelledError:
+            trace.result = "cancelled"
+            raise
+        except Exception as error:
+            trace.fail(error, result="failed")
+            raise
+        finally:
+            trace.finished()
+            current_request_id.reset(context_token)
+
     async def process_callback(event: MessageCallback, trace: UpdateTrace) -> None:
         # MAX expects every button press to be acknowledged, even if its message is gone.
         trace.phase = "acknowledge"
-        await event.ack()
+        await event.ack(notification="Обрабатываю...")
         message = event.message
         if message is None or message.recipient.chat_type != ChatType.DIALOG:
             trace.result = "ignored_chat_type"

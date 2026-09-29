@@ -6,7 +6,9 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
-from maxapi.enums import ChatType
+from maxapi.enums import ChatType, UpdateType
+from maxapi.types import BotStarted
+from maxapi.types.attachments import RequestContactButton
 from maxapi.types.input_media import InputMediaBuffer
 
 from src.bot.handlers import commands
@@ -40,6 +42,12 @@ class BotRouterTests(unittest.IsolatedAsyncioTestCase):
             for handler in router.event_handlers
             if handler.func_event.__name__ == "on_callback"
         )
+        self.started_registration = next(
+            handler
+            for handler in router.event_handlers
+            if handler.func_event.__name__ == "on_started"
+        )
+        self.started_handler = self.started_registration.func_event
         self.sender = SimpleNamespace(
             user_id=123, first_name="Иван", last_name="Иванов", is_bot=False
         )
@@ -55,6 +63,94 @@ class BotRouterTests(unittest.IsolatedAsyncioTestCase):
             text=text, mid="message-1", attachments=attachments or []
         )
         return SimpleNamespace(message=self.message)
+
+    def _started_event(self) -> BotStarted:
+        event = BotStarted(
+            timestamp=123456,
+            chat_id=987,
+            user={
+                "user_id": self.sender.user_id,
+                "first_name": self.sender.first_name,
+                "last_name": self.sender.last_name,
+                "is_bot": False,
+                "last_activity_time": 0,
+            },
+        )
+        event.bot = SimpleNamespace(send_message=AsyncMock())
+        return event
+
+    async def test_start_button_sends_role_menu_without_text_message(self) -> None:
+        self.assertEqual(self.started_registration.update_type, UpdateType.BOT_STARTED)
+        event = self._started_event()
+        with (
+            patch.object(
+                commands, "get_or_create_user", new=AsyncMock(return_value=self.actor)
+            ) as resolve_actor,
+            patch.object(
+                commands, "_reserve_message", new=AsyncMock(return_value=True)
+            ) as reserve,
+            patch.object(commands, "clear_dialog", new=AsyncMock()) as clear,
+        ):
+            await self.started_handler(event)
+
+        resolve_actor.assert_awaited_once_with(
+            self.session, "123", full_name="Иван Иванов"
+        )
+        reserve.assert_awaited_once_with(
+            self.session,
+            user_id=self.actor.id,
+            message_id="bot_started:987:123456",
+            content="start",
+        )
+        clear.assert_awaited_once_with(self.session, self.actor.id)
+        self.session.commit.assert_awaited_once()
+        answer = event.bot.send_message.await_args.kwargs
+        self.assertEqual((answer["chat_id"], answer["user_id"]), (987, 123))
+        self.assertEqual(answer["text"], commands._home(self.actor).text)
+        payloads = {
+            button.payload
+            for row in answer["attachments"][0].payload.buttons
+            for button in row
+        }
+        self.assertIn("i:new", payloads)
+        self.assertIn("menu", payloads)
+
+    async def test_start_button_prompts_unverified_user_to_share_contact(self) -> None:
+        self.actor.phone_verified_at = None
+        event = self._started_event()
+        with (
+            patch.object(
+                commands, "get_or_create_user", new=AsyncMock(return_value=self.actor)
+            ),
+            patch.object(
+                commands, "_reserve_message", new=AsyncMock(return_value=True)
+            ),
+            patch.object(commands, "clear_dialog", new=AsyncMock()),
+        ):
+            await self.started_handler(event)
+
+        answer = event.bot.send_message.await_args.kwargs
+        self.assertIn("номер вашего аккаунта MAX", answer["text"])
+        self.assertIsInstance(
+            answer["attachments"][0].payload.buttons[0][0], RequestContactButton
+        )
+
+    async def test_duplicate_start_event_does_not_send_another_menu(self) -> None:
+        event = self._started_event()
+        with (
+            patch.object(
+                commands, "get_or_create_user", new=AsyncMock(return_value=self.actor)
+            ),
+            patch.object(
+                commands, "_reserve_message", new=AsyncMock(return_value=False)
+            ),
+            patch.object(commands, "clear_dialog", new=AsyncMock()) as clear,
+        ):
+            await self.started_handler(event)
+
+        clear.assert_not_awaited()
+        self.session.commit.assert_not_awaited()
+        event.bot.send_message.assert_not_awaited()
 
     async def test_opening_lists_clears_previous_text_dialog(self) -> None:
         for payload, target in (
@@ -77,7 +173,8 @@ class BotRouterTests(unittest.IsolatedAsyncioTestCase):
     async def test_callback_acknowledged_and_dispatched_with_home_button(self) -> None:
         calls = []
 
-        async def acknowledge():
+        async def acknowledge(*, notification: str):
+            self.assertEqual(notification, "Обрабатываю...")
             calls.append("ack")
 
         async def action(*_args):
@@ -102,6 +199,7 @@ class BotRouterTests(unittest.IsolatedAsyncioTestCase):
         ):
             await self.callback_handler(event)
         self.assertEqual(calls, ["ack", "action"])
+        event.ack.assert_awaited_once_with(notification="Обрабатываю...")
         self.session.commit.assert_awaited_once()
         answer = self.message.answer.await_args.kwargs
         self.assertEqual(answer["text"], "Открыто")
