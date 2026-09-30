@@ -100,7 +100,6 @@ export function EmployeeHome({ houses, issues, onIssue, onAccess, onNotification
         <button type="button" className="employee-home__nav-item employee-home__nav-item--active" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>Управление домами</button>
         <button type="button" className="employee-home__nav-item" onClick={() => document.getElementById("employee-issues")?.scrollIntoView({ behavior: "smooth" })}>Проблемы</button>
         <button type="button" className="employee-home__nav-item" onClick={onAccess}>Доступы</button>
-        <span className="employee-home__nav-item employee-home__nav-item--static" aria-disabled="true" title="Раздел пока недоступен">Настройки</span>
         {onChangeRole && <button type="button" className="employee-home__nav-item employee-home__nav-item--role" onClick={onChangeRole}>Сменить демо-роль</button>}
       </aside>
 

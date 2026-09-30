@@ -73,13 +73,6 @@
   background: #0f766e;
 }
 
-.employee-home .employee-home__nav-item--static:hover {
-  color: #d8e7e3;
-  background: transparent;
-}
-
-.employee-home .employee-home__nav-item--static { cursor: default; }
-
 .employee-home .employee-home__nav-item--role {
   margin-top: auto;
 }
