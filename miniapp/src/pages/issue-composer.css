@@ -1,0 +1,437 @@
+.page.issue-composer {
+  max-width: 600px;
+  padding-top: 14px;
+}
+
+.issue-composer .screen-header {
+  min-height: 0;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.issue-composer .screen-header .icon-button {
+  width: 24px;
+  height: 27px;
+  border-radius: 0;
+  background: transparent;
+}
+
+.issue-composer .screen-header h1 {
+  font-family: "Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 27px;
+  letter-spacing: 0;
+}
+
+.issue-composer .screen-header p {
+  margin-top: 14px;
+  margin-left: -32px;
+  font-size: 12px;
+  line-height: 15px;
+}
+
+.issue-composer__steps {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.issue-composer__steps span {
+  display: inline-flex;
+  min-height: 31px;
+  align-items: center;
+  padding: 7px 12px;
+  border-radius: 999px;
+  color: var(--note);
+  background: #ecf2f0;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.issue-composer__steps .is-active {
+  color: var(--brand);
+  background: #dff3f0;
+}
+
+.issue-composer .form-stack {
+  gap: 14px;
+}
+
+.issue-composer__section {
+  min-width: 0;
+}
+
+.issue-composer h2 {
+  margin: 0 0 14px;
+  font-family: "Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 24px;
+  letter-spacing: 0;
+}
+
+.issue-composer__section-heading {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.issue-composer__section-heading h2 {
+  flex: 0 0 auto;
+  margin-bottom: 0;
+}
+
+.issue-composer__chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+
+.issue-composer__chips::-webkit-scrollbar {
+  display: none;
+}
+
+.issue-composer__chips--scope {
+  flex-wrap: wrap;
+  overflow: visible;
+}
+
+.issue-composer__chip {
+  min-height: 36px;
+  flex: 0 0 auto;
+  padding: 7px 12px;
+  border: 1px solid #d7e5e2;
+  border-radius: 999px;
+  color: var(--muted);
+  background: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.issue-composer__chip--selected {
+  border-color: var(--brand);
+  color: var(--brand);
+  background: #dff3f0;
+}
+
+.issue-composer__context {
+  overflow: hidden;
+  min-width: 0;
+  margin: 0;
+  color: var(--note);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.issue-composer__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.issue-composer .issue-composer__description {
+  position: relative;
+  margin-top: 0;
+}
+
+.issue-composer .issue-composer__description textarea {
+  min-height: 128px;
+  padding: 14px;
+  border-color: #718781;
+  border-radius: 12px;
+  background: #fff;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.issue-composer .issue-composer__description small {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  padding-left: 5px;
+  background: #fff;
+  font-size: 11px;
+}
+
+.issue-composer__optional {
+  margin-top: 6px;
+}
+
+.issue-composer__optional summary,
+.issue-composer__analysis summary {
+  color: var(--brand);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.issue-composer__optional .field {
+  margin-top: 12px;
+}
+
+.issue-composer__section > .field-help {
+  margin: 8px 0 0;
+  font-size: 12px;
+}
+
+.issue-composer__media-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  max-width: 350px;
+}
+
+.issue-composer__media-tile {
+  display: flex;
+  min-width: 0;
+  min-height: 88px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid #d7e5e2;
+  border-radius: 12px;
+  color: var(--ink);
+  background: #dff3f0;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.issue-composer__media-tile small {
+  color: var(--brand);
+  font-size: 11px;
+}
+
+.issue-composer__media-tile--add {
+  position: relative;
+  color: var(--brand);
+  background: #f4f8f7;
+  cursor: pointer;
+}
+
+.issue-composer__media-tile--add input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.issue-composer__media-tile--add:focus-within {
+  outline: 3px solid #76c8bd;
+  outline-offset: 2px;
+}
+
+.issue-composer__media-help {
+  margin: 8px 0 0;
+  color: var(--note);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.issue-composer__media-help summary { color: var(--brand); cursor: pointer; font-weight: 600; }
+.issue-composer__media-help p { margin: 6px 0 0; }
+
+.issue-composer__media .attachment-list {
+  margin-top: 12px;
+}
+
+.issue-composer .issue-composer__continue {
+  min-height: 52px;
+  border-radius: 16px;
+  box-shadow: none;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.issue-composer .issue-composer__save {
+  min-height: 40px;
+  background: transparent;
+  font-size: 13px;
+}
+
+.issue-composer__summary {
+  min-height: 220px;
+  padding: 18px;
+  border: 1px solid #d7e5e2;
+  border-radius: 20px;
+  background: #fff;
+}
+
+.issue-composer__summary h2 {
+  margin-bottom: 10px;
+}
+
+.issue-composer__summary-row {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 17px;
+  overflow-wrap: anywhere;
+}
+
+.issue-composer__summary-text {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 20px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.issue-composer__edit-summary {
+  margin-top: 12px;
+}
+
+.issue-composer__analysis {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #ecf7f5;
+}
+
+.issue-composer__analysis p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.issue-composer__check-note {
+  margin: 0;
+  font-size: 12px;
+}
+
+.issue-composer__decision-actions {
+  display: grid;
+  gap: 14px;
+}
+
+.issue-composer__decision-actions .button {
+  width: 100%;
+  box-shadow: none;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.issue-composer__decision-actions .button--soft {
+  min-height: 44px;
+  border-radius: 14px;
+}
+
+.issue-composer__decision-actions .button--primary {
+  min-height: 52px;
+  border-radius: 16px;
+}
+
+.issue-composer__similar {
+  padding: 14px;
+  border-radius: 16px;
+  background: #ecf7f5;
+}
+
+.issue-composer__similar--matches {
+  background: #fff0d7;
+}
+
+.issue-composer__similar h2 {
+  margin-bottom: 8px;
+  color: #9a5a00;
+  font-size: 14px;
+  line-height: 18px;
+}
+
+.issue-composer__similar:not(.issue-composer__similar--matches) h2 {
+  color: var(--brand);
+}
+
+.issue-composer__similar-list { display: grid; gap: 22px; }
+.issue-composer__similar-match { display: grid; gap: 14px; }
+
+.issue-composer__similar .issue-card {
+  min-height: 170px;
+  padding: 16px;
+  border: 1px solid #d7e5e2;
+  border-radius: 20px;
+  box-shadow: none;
+}
+
+.issue-composer__similar .issue-card__title {
+  font-size: 18px;
+}
+
+.issue-composer__similar .status {
+  min-width: 0;
+  min-height: 27px;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.issue-composer__similar .status::before {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: currentColor;
+  content: "";
+}
+
+.issue-composer__similar .status--in_progress {
+  color: var(--brand);
+  background: #dff3f0;
+}
+
+.issue-composer__similar .issue-card__description {
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.issue-composer__similar .issue-card__bottom { justify-content: flex-start; font-size: 13px; }
+.issue-composer__similar .issue-card__bottom > span:first-child { color: var(--brand); font-weight: 600; }
+.issue-composer__similar .issue-card__bottom strong { color: inherit; }
+.issue-composer__similar .issue-card__bottom > span:last-child { font-size: 12px; }
+
+.issue-composer .issue-composer__support {
+  display: inline-flex;
+  width: min(100%, 280px);
+  min-height: 52px;
+  align-items: center;
+  justify-content: center;
+  justify-self: start;
+  gap: 8px;
+  border-radius: 16px;
+  box-shadow: none;
+  font-size: 15px;
+}
+
+.issue-composer__similar .muted-text {
+  margin: 0;
+  font-size: 13px;
+}
+
+@media (max-width: 380px) {
+  .issue-composer__media-grid {
+    gap: 7px;
+  }
+
+  .issue-composer__media-tile {
+    padding: 10px;
+    font-size: 11px;
+  }
+}

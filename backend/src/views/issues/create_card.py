@@ -27,12 +27,8 @@ async def create_card(
             title=body.title,
             description=body.description,
             summary_description=body.summary_description,
-            scope_all_house=body.scope_all_house,
-            target_entrances=body.target_entrances or [],
-            target_apartments=[
-                (item.entrance_number, item.apartment_number)
-                for item in body.target_apartments or []
-            ],
+            scope=body.scope,
+            apartment_id=body.apartment_id,
         )
         result = models.Response201(card=await card_model(session, actor, card))
         await session.commit()

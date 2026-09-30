@@ -43,12 +43,12 @@ function participantName(item: AccessRequestDetail["discussion"][number], detail
   return "Поддержка";
 }
 
-export function SupportHome({ actorId }: { actorId: string }) {
-  const [kind, setKind] = useState<SupportKind>("company_registration");
+export function SupportHome({ actorId, initialRequest, onNotifications, unreadCount }: { actorId: string; initialRequest?: { kind: SupportKind; id: string } | null; onNotifications?: () => void; unreadCount?: number }) {
+  const [kind, setKind] = useState<SupportKind>(initialRequest?.kind ?? "company_registration");
   const [offset, setOffset] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
   const [page, setPage] = useState<AccessRequestsPage | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(initialRequest?.id ?? null);
   const [detail, setDetail] = useState<AccessRequestDetail | null>(null);
   const [loadingList, setLoadingList] = useState(true);
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -101,6 +101,12 @@ export function SupportHome({ actorId }: { actorId: string }) {
     return () => { cancelled = true; };
   }, [kind, selectedId, refreshKey]);
 
+  useEffect(() => {
+    if (!selectedId) return;
+    const frame = requestAnimationFrame(() => document.getElementById("support-request-detail")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    return () => cancelAnimationFrame(frame);
+  }, [selectedId]);
+
   function selectKind(nextKind: SupportKind) {
     if (nextKind === kind) return;
     setKind(nextKind);
@@ -145,7 +151,7 @@ export function SupportHome({ actorId }: { actorId: string }) {
   const totalPages = Math.max(1, Math.ceil((page?.total ?? 0) / PAGE_SIZE));
 
   return <div className="page page--employee-access">
-    <ScreenHeader title="Поддержка" subtitle="Обращения управляющих компаний и домов" icon="shield" />
+    <ScreenHeader title="Поддержка" subtitle="Обращения управляющих компаний и домов" icon="shield" action={onNotifications ? { label: "Уведомления", onClick: onNotifications, icon: "bell", badge: unreadCount } : undefined} />
     <div className="segmented" role="tablist" aria-label="Вид обращения">
       <button type="button" role="tab" aria-selected={kind === "company_registration"} className={kind === "company_registration" ? "is-active" : ""} onClick={() => selectKind("company_registration")}>Регистрация УК</button>
       <button type="button" role="tab" aria-selected={kind === "house_addition"} className={kind === "house_addition" ? "is-active" : ""} onClick={() => selectKind("house_addition")}>Подключение домов</button>

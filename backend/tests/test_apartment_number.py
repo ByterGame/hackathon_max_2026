@@ -1,4 +1,4 @@
-"""Apartment numbers do not require an entrance to identify a home."""
+"""Apartment numbers identify a home; new access requests also name an entrance."""
 
 import unittest
 from importlib import import_module
@@ -9,6 +9,7 @@ from uuid import UUID
 
 from alembic.operations import Operations
 from alembic.runtime.migration import MigrationContext
+from pydantic import ValidationError
 from sqlalchemy.dialects import postgresql
 
 from src.db.models import Apartment, Base
@@ -20,34 +21,37 @@ from src.domain.issues.service import _resident_locations
 from src.gen.access.api.create_resident_offer import Request as OfferRequest
 from src.gen.access.api.create_resident_request import Request as ResidentRequest
 from src.gen.access.api.list_grants import GrantItem
-from src.gen.issues.api.create_card import TargetApartment
+from src.gen.issues.api.create_card import Request as CreateIssueRequest
 
 
 class ApartmentContractTests(unittest.TestCase):
-    def test_access_requests_and_issue_targets_accept_apartment_without_entrance(self):
+    def test_new_access_requests_require_entrance_and_issue_has_no_free_form_target(self):
         house_id = UUID(int=1)
+        with self.assertRaises(ValidationError):
+            ResidentRequest.model_validate(
+                {"house_id": str(house_id), "full_name": "Иван Иванов", "apartment_number": 17}
+            )
+        with self.assertRaises(ValidationError):
+            OfferRequest.model_validate(
+                {"house_id": str(house_id), "phone_number": "79990000000", "apartment_number": 17}
+            )
         resident = ResidentRequest.model_validate(
-            {"house_id": str(house_id), "full_name": "Иван Иванов", "apartment_number": 17}
+            {"house_id": str(house_id), "full_name": "Иван Иванов", "entrance_number": 2, "apartment_number": 17}
         )
         offer = OfferRequest.model_validate(
-            {"house_id": str(house_id), "phone_number": "79990000000", "apartment_number": 17}
+            {"house_id": str(house_id), "phone_number": "79990000000", "entrance_number": 2, "apartment_number": 17}
         )
-        target = TargetApartment.model_validate({"apartment_number": 17})
-        self.assertIsNone(resident.entrance_number)
-        self.assertIsNone(offer.entrance_number)
-        self.assertIsNone(target.entrance_number)
-        self.assertEqual(
-            ResidentRequest.model_validate(
-                {"house_id": str(house_id), "full_name": "Иван Иванов", "entrance_number": 2, "apartment_number": 17}
-            ).entrance_number,
-            2,
-        )
-        self.assertEqual(
-            TargetApartment.model_validate(
-                {"entrance_number": 2, "apartment_number": 17}
-            ).entrance_number,
-            2,
-        )
+        self.assertEqual(resident.entrance_number, 2)
+        self.assertEqual(offer.entrance_number, 2)
+        issue = CreateIssueRequest.model_validate({
+            "house_id": str(house_id),
+            "category_id": str(UUID(int=4)),
+            "title": "Лифт",
+            "description": "Не работает лифт",
+            "scope": "apartment",
+        })
+        self.assertFalse(hasattr(issue, "target_apartments"))
+        self.assertFalse(hasattr(issue, "target_entrances"))
 
     def test_grant_response_allows_unknown_entrance(self):
         grant = GrantItem.model_validate(

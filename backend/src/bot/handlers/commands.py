@@ -49,6 +49,7 @@ from src.domain.files.storage import FileError, remove_failed_upload, storage_ro
 from src.domain.issues.service import IssueError
 from src.domain.notifications.service import (
     NotificationError,
+    bot_notification_target,
     list_notifications,
     mark_read,
 )
@@ -179,6 +180,14 @@ async def _notification_action(
     session: AsyncSession, actor: User, payload: str
 ) -> UiReply:
     parts = payload.split(":")
+    if len(parts) == 3 and parts[:2] == ["n", "open"]:
+        notification = await mark_read(session, actor, UUID(parts[2]))
+        _, target = bot_notification_target(
+            notification.subject_kind, notification.subject_id, actor.kind
+        )
+        if target is None:
+            return UiReply("Для этого уведомления отдельной карточки нет.")
+        return await _handle_action(session, actor, target)
     if len(parts) in {3, 4} and parts[:2] == ["n", "read"]:
         page = _notification_page(parts[3]) if len(parts) == 4 else 0
         await mark_read(session, actor, UUID(parts[2]))
@@ -201,41 +210,15 @@ async def _notification_action(
     lines = [f"События · страница {page + 1}/{total_pages}:"]
     buttons: list[list[Button]] = []
     for index, (notification, _event) in enumerate(selected, start=start + 1):
-        targets = {
-            "issue_card": ("Проблема дома", f"i:card:{notification.subject_id}"),
-            "resident_request": (
-                "Заявка на доступ",
-                f"a:request:resident:{notification.subject_id}",
-            ),
-            "company_registration_request": (
-                "Регистрация УК",
-                f"a:request:company_registration:{notification.subject_id}",
-            ),
-            "house_addition_request": (
-                "Подключение дома",
-                f"a:request:house_addition:{notification.subject_id}",
-            ),
-            "resident_offer": (
-                "Предложение доступа",
-                (
-                    "a:staff_houses"
-                    if actor.kind == "employee"
-                    else f"a:offer:{notification.subject_id}"
-                ),
-            ),
-            "resident_grant": (
-                "Доступ к дому",
-                "a:staff_houses" if actor.kind == "employee" else "a:grants",
-            ),
-            "staff_assignment": ("Назначение сотрудника", "a:staff_houses"),
-        }
-        subject, target = targets.get(notification.subject_kind, ("Событие", None))
+        subject, target = bot_notification_target(
+            notification.subject_kind, notification.subject_id, actor.kind
+        )
         mark = "●" if notification.read_at is None else "✓"
         lines.append(
             f"{index}. {mark} {subject} · {notification.created_at:%d.%m %H:%M}"
         )
         if target is not None:
-            buttons.append([Button(f"Открыть {index}", target)])
+            buttons.append([Button(f"Открыть {index}", f"n:open:{notification.id}")])
         if notification.read_at is None:
             buttons.append(
                 [Button(f"Прочитано {index}", f"n:read:{notification.id}:{page}")]

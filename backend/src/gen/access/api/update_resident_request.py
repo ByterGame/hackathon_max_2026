@@ -11,7 +11,7 @@ class Request(BaseModel):
         None,
         description='Устаревшее поле совместимости: если передано, должно совпадать с общим ФИО профиля; снимок ФИО в заявке здесь не меняется.',
     )
-    entrance_number: conint(ge=1) | None = None
+    entrance_number: conint(ge=1)
     apartment_number: conint(ge=1)
 
 

@@ -30,6 +30,7 @@ export function AccessRequest({ houses, requests, offers, initialName, nameConfi
   const [fullName, setFullName] = useState(initialName ?? (isDemoMode ? demoResident.name : ""));
   const [nameEditorOpen, setNameEditorOpen] = useState(false);
   const [profileNameDraft, setProfileNameDraft] = useState("");
+  const [entrance, setEntrance] = useState("");
   const [apartment, setApartment] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -108,6 +109,7 @@ export function AccessRequest({ houses, requests, offers, initialName, nameConfi
       savedHouseId.current = typeof payload.house_id === "string" ? payload.house_id : null;
       if (editedByUser.current) return;
       if (!nameConfirmed && typeof payload.full_name === "string") setFullName(payload.full_name);
+      if (typeof payload.entrance_number === "number") setEntrance(String(payload.entrance_number));
       if (typeof payload.apartment_number === "number") setApartment(String(payload.apartment_number));
       setDraftNotice("Черновик восстановлен. Найдите и подтвердите адрес дома заново перед отправкой.");
     }).catch(() => { if (active) setDraftNotice("Не удалось загрузить общий черновик. Можно продолжить без него."); });
@@ -116,10 +118,12 @@ export function AccessRequest({ houses, requests, offers, initialName, nameConfi
 
   function draftPayload(): Record<string, unknown> {
     const houseId = selectedHouse?.id ?? savedHouseId.current;
+    const entranceNumber = Number(entrance);
     const apartmentNumber = Number(apartment);
     return {
       ...(houseId ? { house_id: houseId } : {}),
       ...(fullName.trim() ? { full_name: fullName.trim() } : {}),
+      ...(Number.isInteger(entranceNumber) && entranceNumber > 0 ? { entrance_number: entranceNumber } : {}),
       ...(Number.isInteger(apartmentNumber) && apartmentNumber > 0 ? { apartment_number: apartmentNumber } : {}),
     };
   }
@@ -144,7 +148,7 @@ export function AccessRequest({ houses, requests, offers, initialName, nameConfi
       void persistDraft(true).catch((reason) => setDraftNotice(`Автосохранение не удалось: ${reason instanceof Error ? reason.message : "ошибка сервера"}`));
     }, 900);
     return () => window.clearTimeout(timer);
-  }, [selectedHouse?.id, fullName, apartment, busy, success]);
+  }, [selectedHouse?.id, fullName, entrance, apartment, busy, success]);
 
   async function saveManually() {
     setBusy(true); setError("");
@@ -198,10 +202,16 @@ export function AccessRequest({ houses, requests, offers, initialName, nameConfi
     if (nameEditorOpen) { setError("Сохраните или отмените изменение ФИО перед подачей заявки"); return; }
     if (!fullName.trim()) { setError("Укажите ФИО для общего профиля"); return; }
     if (!selectedHouse || !confirmed) { setError("Выберите и подтвердите адрес дома"); return; }
+    const entranceNumber = Number(entrance);
+    if (!Number.isInteger(entranceNumber) || entranceNumber < 1) { setError("Укажите корректный номер подъезда"); return; }
+    if (selectedHouse.entranceCount && entranceNumber > selectedHouse.entranceCount) {
+      setError(`В этом доме ${selectedHouse.entranceCount} подъездов. Проверьте номер.`);
+      return;
+    }
     const apartmentNumber = Number(apartment);
     if (!Number.isInteger(apartmentNumber) || apartmentNumber < 1) { setError("Укажите корректный номер квартиры"); return; }
     if (!createdRequestId.current && requests.some((item) => item.houseId === selectedHouse.id && item.apartment === apartmentNumber && !["closed", "cancelled"].includes(item.status))) {
-      setError("Заявка на эту квартиру уже рассматривается. Дождитесь ответа УК.");
+      setError("Заявка на эту квартиру уже рассматривается. Если подъезд указан неверно, исправьте существующую заявку.");
       return;
     }
     setBusy(true); setError("");
@@ -210,7 +220,7 @@ export function AccessRequest({ houses, requests, offers, initialName, nameConfi
       if (!isDemoMode && !createdRequestId.current) saved = await persistDraft();
       if (!createdRequestId.current) {
         if (!createKey.current && !isDemoMode) createKey.current = crypto.randomUUID();
-        const request = await issuesClient.submitResidentRequest({ houseId: selectedHouse.id, fullName, apartment: apartmentNumber }, createKey.current ?? undefined);
+        const request = await issuesClient.submitResidentRequest({ houseId: selectedHouse.id, fullName, entrance: entranceNumber, apartment: apartmentNumber }, createKey.current ?? undefined);
         createdRequestId.current = request.id;
       }
       if (!isDemoMode && saved && !saved.submitted_at) {
@@ -238,7 +248,7 @@ export function AccessRequest({ houses, requests, offers, initialName, nameConfi
       {success ? <section className="panel success-panel"><span className="success-icon"><Icon name="check" size={32} /></span><h2>{isDemoMode ? "Заявка сохранена в демо" : "Заявка отправлена в УК"}</h2><p>{isDemoMode ? "Заявка находится только в этом браузере." : "Следите за статусом и пишите УК в карточке заявки."} До выдачи доступа проблемы этого дома недоступны.</p>{createdRequestId.current && <button className="button button--primary" type="button" onClick={() => { if (createdRequestId.current) onOpenRequest(createdRequestId.current); }}>{isDemoMode ? "Открыть заявку" : "Открыть заявку и обсуждение"}</button>}<button className="button button--soft" type="button" onClick={onBack}>Вернуться</button></section> : <form className="form-stack" onInputCapture={() => { editedByUser.current = true; }} onSubmit={(event) => void submit(event)}>
         <fieldset className="request-form-fields" disabled={Boolean(createdRequestId.current)}>
         <section className="panel form-panel"><h2>Найдите подключённый дом</h2><label className="field"><span>Введите улицу и номер дома</span><input value={search} onChange={(event) => { setSearch(event.target.value); setSelectedHouse(null); setConfirmed(false); }} placeholder="Например: Пушкина, 5" /></label><label className="field"><span>Совпадающие адреса</span><select required value={selectedHouse?.id ?? ""} onChange={(event) => { const house = matches.find((item) => item.id === event.target.value) ?? null; setSelectedHouse(house); savedHouseId.current = house?.id ?? null; setConfirmed(false); }}><option value="">Выберите адрес</option>{matches.map((item) => <option key={item.id} value={item.id}>{item.address}</option>)}</select></label>{sharedDraft && !selectedHouse && <p className="field-help">В черновике сохранён дом, но адрес нужно найти и подтвердить повторно.</p>}{search.trim().length >= 2 && matches.length === 0 && <p className="field-help">Подключённый дом не найден. Проверьте адрес или попробуйте позже.</p>}{selectedHouse && <label className="checkbox-row"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /><span>Подтверждаю адрес: <strong>{selectedHouse.address}</strong></span></label>}</section>
-        <section className="panel form-panel"><h2>Ваши данные</h2>{nameConfirmed ? <div className="field"><span>ФИО в общем профиле</span><strong>{fullName}</strong><p className="field-help">Оно используется для заявок на доступ ко всем домам.</p>{!isDemoMode && !nameEditorOpen && <button type="button" className="button button--soft" onClick={() => { setProfileNameDraft(fullName); setNameEditorOpen(true); }}>Изменить ФИО</button>}{!isDemoMode && nameEditorOpen && <><input value={profileNameDraft} onChange={(event) => setProfileNameDraft(event.target.value)} placeholder="Иванов Иван Иванович" maxLength={255} /><div className="button-row"><button type="button" className="button button--primary" disabled={busy} onClick={() => void saveProfileName()}>Сохранить ФИО</button><button type="button" className="button button--soft" disabled={busy} onClick={() => setNameEditorOpen(false)}>Отмена</button></div></>}</div> : <label className="field"><span>ФИО для общего профиля</span><input required value={fullName} onChange={(event) => setFullName(event.target.value)} placeholder="Иванов Иван Иванович" maxLength={255} /><span className="field-help">Проверьте ФИО: после отправки оно сохранится для всех домов.</span></label>}<label className="field"><span>Квартира</span><input required type="number" min="1" inputMode="numeric" value={apartment} onChange={(event) => setApartment(event.target.value)} placeholder="24" /></label></section>
+        <section className="panel form-panel"><h2>Ваши данные</h2>{nameConfirmed ? <div className="field"><span>ФИО в общем профиле</span><strong>{fullName}</strong><p className="field-help">Оно используется для заявок на доступ ко всем домам.</p>{!isDemoMode && !nameEditorOpen && <button type="button" className="button button--soft" onClick={() => { setProfileNameDraft(fullName); setNameEditorOpen(true); }}>Изменить ФИО</button>}{!isDemoMode && nameEditorOpen && <><input value={profileNameDraft} onChange={(event) => setProfileNameDraft(event.target.value)} placeholder="Иванов Иван Иванович" maxLength={255} /><div className="button-row"><button type="button" className="button button--primary" disabled={busy} onClick={() => void saveProfileName()}>Сохранить ФИО</button><button type="button" className="button button--soft" disabled={busy} onClick={() => setNameEditorOpen(false)}>Отмена</button></div></>}</div> : <label className="field"><span>ФИО для общего профиля</span><input required value={fullName} onChange={(event) => setFullName(event.target.value)} placeholder="Иванов Иван Иванович" maxLength={255} /><span className="field-help">Проверьте ФИО: после отправки оно сохранится для всех домов.</span></label>}<div className="field-grid"><label className="field"><span>Подъезд</span><input required type="number" min="1" max={selectedHouse?.entranceCount ?? undefined} inputMode="numeric" value={entrance} onChange={(event) => setEntrance(event.target.value)} placeholder="2" />{selectedHouse?.entranceCount && <span className="field-help">От 1 до {selectedHouse.entranceCount}</span>}</label><label className="field"><span>Квартира</span><input required type="number" min="1" inputMode="numeric" value={apartment} onChange={(event) => setApartment(event.target.value)} placeholder="24" /></label></div></section>
         </fieldset>
         {!isDemoMode && <button type="button" className="button button--soft button--wide" disabled={busy} onClick={() => void saveManually()}>{sharedDraft ? "Обновить общий черновик" : "Сохранить общий черновик"}</button>}
         {draftNotice && <p className="draft-notice" role="status">{draftNotice}</p>}

@@ -1,0 +1,137 @@
+.page--notifications.notifications-page {
+  max-width: 820px;
+  padding: 16px 16px calc(110px + env(safe-area-inset-bottom));
+}
+
+.notifications-page__toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 0 18px;
+}
+
+.notifications-page__toolbar p {
+  max-width: 540px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.notifications-page__toolbar .text-link {
+  flex: 0 0 auto;
+  padding: 0;
+}
+
+.notifications-page__error,
+.notifications-page__empty {
+  margin: 0 0 16px;
+}
+
+.notifications-page__error p { margin-top: 0; }
+
+.notifications-page__list {
+  display: grid;
+  gap: 12px;
+}
+
+.notifications-page__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: #fff;
+}
+
+.notifications-page__item--unread {
+  border-color: #a8d7d0;
+  background: #f1faf8;
+}
+
+.notifications-page__item-icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  place-items: center;
+  border-radius: 12px;
+  color: var(--brand);
+  background: var(--brand-soft);
+}
+
+.notifications-page__item-content { min-width: 0; flex: 1; }
+
+.notifications-page__item-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.notifications-page__item-heading strong {
+  font-size: 15px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.notifications-page__unread-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--brand);
+}
+
+.notifications-page__item-content p {
+  margin: 5px 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.notifications-page__item-content time {
+  display: block;
+  margin-top: 10px;
+  color: var(--note);
+  font-size: 12px;
+}
+
+.notifications-page__open {
+  display: flex;
+  width: fit-content;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 0;
+  border: 0;
+  color: var(--brand);
+  background: transparent;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.notifications-page__open:disabled { opacity: .55; }
+
+.notifications-page__unavailable {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.notifications-page__unavailable .text-link { padding: 0; }
+
+@media (min-width: 900px) {
+  .page--notifications.notifications-page {
+    min-height: 100dvh;
+    padding: 40px 16px 80px;
+  }
+}

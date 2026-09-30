@@ -4,7 +4,7 @@ export type IconName =
   | "home" | "building" | "bell" | "plus" | "back" | "chevron" | "list"
   | "people" | "user" | "pin" | "clock" | "chat" | "check" | "filter"
   | "send" | "search" | "paperclip" | "close" | "shield" | "edit"
-  | "arrow" | "info" | "sparkles" | "key";
+  | "arrow" | "info" | "sparkles" | "key" | "file" | "video" | "image" | "pdf" | "download";
 
 const paths: Record<IconName, ReactNode> = {
   home: <><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z" /></>,
@@ -31,11 +31,16 @@ const paths: Record<IconName, ReactNode> = {
   info: <><circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7h.01" /></>,
   sparkles: <><path d="m12 2 2.2 6.8L21 11l-6.8 2.2L12 20l-2.2-6.8L3 11l6.8-2.2L12 2ZM19 18l.8 2.2L22 21l-2.2.8L19 24l-.8-2.2L16 21l2.2-.8z" /></>,
   key: <><circle cx="8" cy="9" r="5" /><path d="M12 12 21 21m-4-4 2-2m0 4 2-2" /></>,
+  file: <><path d="M6 2h8l5 5v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1Z" /><path d="M14 2v6h5M8 13h8M8 17h6" /></>,
+  video: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m10 9 5 3-5 3V9Z" /></>,
+  image: <><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8" cy="8" r="1.5" /><path d="m3 17 5-5 3 3 3-4 7 7" /></>,
+  pdf: <><path d="M6 2h8l5 5v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1Z" /><path d="M14 2v6h5M8 17h8M8 13h5" /></>,
+  download: <><path d="M12 3v12m-4-4 4 4 4-4M4 18v3h16v-3" /></>,
 };
 
 export function Icon({ name, size = 22, className = "" }: { name: IconName; size?: number; className?: string }) {
   return (
-    <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {paths[name]}
     </svg>
   );

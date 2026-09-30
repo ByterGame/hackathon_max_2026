@@ -52,11 +52,11 @@ async def create_resident_request(
 ) -> ResidentRequest:
     require_verified_phone(actor)
     require_user_kind(actor, {"unassigned", "resident"})
-    if apartment_number <= 0 or (entrance_number is not None and entrance_number <= 0):
+    if entrance_number is None or entrance_number <= 0 or apartment_number <= 0:
         raise AccessRuleError(
             400,
             "invalid_apartment",
-            "Номер квартиры и указанный номер подъезда должны быть положительными",
+            "Укажите положительные номера подъезда и квартиры",
         )
     house = await require_row(session, House, house_id)
     if house.archived_at is not None:
@@ -119,11 +119,11 @@ async def update_resident_request(
     if request.applicant_user_id != actor.id:
         raise AccessRuleError(403, "forbidden", "Можно исправить только свою заявку")
     require_open_request(request.status)
-    if apartment_number <= 0 or (entrance_number is not None and entrance_number <= 0):
+    if entrance_number is None or entrance_number <= 0 or apartment_number <= 0:
         raise AccessRuleError(
             400,
             "invalid_apartment",
-            "Номер квартиры и указанный номер подъезда должны быть положительными",
+            "Укажите положительные номера подъезда и квартиры",
         )
     house = await require_row(session, House, request.house_id)
     if (
@@ -307,11 +307,11 @@ async def create_resident_offer(
     require_future_expiry(valid_to)
     house = await require_row(session, House, house_id)
     await require_staff(session, actor, house.company_id, "can_manage_residents")
-    if apartment_number <= 0 or (entrance_number is not None and entrance_number <= 0):
+    if entrance_number is None or entrance_number <= 0 or apartment_number <= 0:
         raise AccessRuleError(
             400,
             "invalid_apartment",
-            "Номер квартиры и указанный номер подъезда должны быть положительными",
+            "Укажите положительные номера подъезда и квартиры",
         )
     if (
         entrance_number is not None

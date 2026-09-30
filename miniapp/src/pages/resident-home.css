@@ -1,8 +1,424 @@
-.my-houses { margin-bottom: 16px; }
-.my-houses__list { display: grid; gap: 10px; }
-.my-house-card { display: flex; align-items: center; width: 100%; gap: 12px; padding: 14px; text-align: left; cursor: pointer; border: 2px solid transparent; }
-.my-house-card--selected { border-color: #397be4; background: #f2f7ff; }
-.my-house-card__text { display: grid; flex: 1; min-width: 0; gap: 4px; }
-.my-house-card__text strong { overflow-wrap: anywhere; }
-.my-house-card__text small { color: #64748b; }
-.my-house-card__state { flex: none; font-size: 12px; font-weight: 700; color: #397be4; }
+.page.resident-home {
+  max-width: 820px;
+  padding: 14px 16px 110px;
+}
+
+.app-shell--with-nav .page.resident-home {
+  padding-bottom: calc(110px + env(safe-area-inset-bottom));
+}
+
+.resident-home__web-header {
+  display: none;
+}
+
+.resident-home .screen-header {
+  min-height: 70px;
+  margin-bottom: 14px;
+}
+
+.resident-home h2 {
+  margin: 0;
+  font-family: "Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 24px;
+  letter-spacing: 0;
+}
+
+.resident-home .my-houses {
+  margin-bottom: 14px;
+}
+
+.resident-home .my-houses h2,
+.resident-home__recent h2 {
+  margin-bottom: 14px;
+}
+
+.my-houses__list {
+  display: grid;
+  gap: 14px;
+}
+
+.resident-home .my-house-card {
+  display: flex;
+  width: 100%;
+  min-height: 104px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 6px;
+  padding: 16px;
+  border: 1px solid #d7e5e2;
+  border-radius: 20px;
+  box-shadow: none;
+  color: var(--ink);
+  text-align: left;
+}
+
+.resident-home .my-house-card--selected {
+  border-color: var(--brand);
+  background: #ecf7f5;
+}
+
+.my-house-card__address {
+  font-size: 17px;
+  line-height: 21px;
+  overflow-wrap: anywhere;
+}
+
+.my-house-card__location {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 16px;
+}
+
+.my-house-card__state {
+  color: var(--brand);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 15px;
+}
+
+.resident-home__recent .issue-list,
+.resident-home .issues-section .issue-list {
+  gap: 14px;
+}
+
+.resident-home .issue-card {
+  display: flex;
+  min-height: 196px;
+  flex-direction: column;
+  padding: 16px;
+  border: 1px solid #d7e5e2;
+  border-radius: 20px;
+  box-shadow: none;
+}
+
+.resident-home .issue-card:hover {
+  box-shadow: none;
+}
+
+.resident-home .issue-card__top {
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.resident-home .issue-card__title {
+  flex: 0 1 auto;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 22px;
+}
+
+.resident-home .status {
+  min-width: 0;
+  min-height: 27px;
+  gap: 6px;
+  justify-content: center;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.resident-home .status::before {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: currentColor;
+  content: "";
+}
+
+.resident-home .status--in_progress {
+  color: #0f766e;
+  background: #dff3f0;
+}
+
+.resident-home .status--reviewing {
+  color: #6d3ac4;
+  background: #efe7ff;
+}
+
+.resident-home .issue-card__meta {
+  margin-top: 8px;
+}
+
+.resident-home .issue-card__description {
+  margin-top: 10px;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.resident-home .issue-card__bottom {
+  justify-content: flex-start;
+  gap: 8px;
+  margin-top: auto;
+  padding: 11px 0 0;
+  border-color: #d7e5e2;
+  font-size: 12px;
+}
+
+.resident-home .issue-card__bottom strong {
+  color: var(--brand);
+}
+
+.resident-home .resident-home__create {
+  min-height: 52px;
+  margin-top: 14px;
+  border-radius: 16px;
+  box-shadow: none;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.resident-home .issues-section {
+  margin-top: 0;
+}
+
+.resident-home .issues-section .section-heading {
+  margin: 0 0 14px;
+}
+
+.resident-home .issues-section h1 {
+  margin: 0;
+  font-family: "Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 34px;
+}
+
+.resident-home .segmented {
+  min-height: 44px;
+  padding: 3px;
+  border-radius: 14px;
+  background: #ecf2f0;
+}
+
+.resident-home .segmented button {
+  min-height: 38px;
+  border-radius: 12px;
+  font-size: 13px;
+}
+
+.resident-home .segmented button.is-active {
+  color: var(--ink);
+  background: #fff;
+  box-shadow: none;
+}
+
+.resident-home .filter-chips {
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.resident-home .chip {
+  min-height: 36px;
+  gap: 5px;
+  padding: 7px 12px;
+  border: 1px solid #d7e5e2;
+  color: var(--muted);
+  background: #fff;
+  font-size: 13px;
+}
+
+.resident-home .chip--active {
+  border-color: var(--brand);
+  color: var(--brand);
+  background: #dff3f0;
+}
+
+.resident-home__access {
+  margin-top: 32px;
+}
+
+.resident-home__access .requests-list {
+  margin-top: 0;
+}
+
+.resident-home__access > .text-link {
+  display: flex;
+  margin-top: 14px;
+}
+
+.resident-home__all-issues {
+  display: flex;
+  width: fit-content;
+  margin-top: 12px;
+}
+
+.resident-home__filter-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  max-width: 800px;
+  margin: 0 0 14px;
+  padding: 14px;
+  border: 1px solid #d7e5e2;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.resident-home__filter-panel label {
+  display: grid;
+  min-width: 150px;
+  flex: 1;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.resident-home__filter-panel select {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid #d7e5e2;
+  border-radius: 10px;
+  color: var(--ink);
+  background: #fff;
+  font: inherit;
+  font-size: 13px;
+}
+
+.resident-home__web-create {
+  display: none;
+}
+
+@media (min-width: 900px) {
+  .app-frame .page.resident-home,
+  .app-shell--with-nav .app-frame .page.resident-home {
+    max-width: 820px;
+    min-height: 100dvh;
+    padding: 0 0 80px;
+    background: #fff;
+  }
+
+  .resident-home__web-header {
+    position: relative;
+    left: 50%;
+    display: flex;
+    width: 100vw;
+    height: 80px;
+    transform: translateX(-50%);
+    border-bottom: 1px solid #d7e5e2;
+    background: #fff;
+  }
+
+  .resident-home__web-header-inner {
+    display: flex;
+    width: min(calc(100% - 96px), 1344px);
+    align-items: center;
+    justify-content: space-between;
+    margin: 0 auto;
+  }
+
+  .resident-home__web-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0;
+    border: 0;
+    color: var(--ink);
+    background: transparent;
+  }
+
+  .resident-home__web-brand strong {
+    font-family: Manrope, "Inter Variable", Inter, sans-serif;
+    font-size: 22px;
+    font-weight: 800;
+    line-height: 27px;
+  }
+
+  .resident-home__web-actions {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .resident-home__web-address,
+  .resident-home__web-role {
+    padding: 4px 0;
+    border: 0;
+    color: var(--muted);
+    background: transparent;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .resident-home__web-role {
+    color: var(--brand);
+  }
+
+  .resident-home__content {
+    padding-top: 36px;
+  }
+
+  .resident-home .screen-header {
+    display: none;
+  }
+
+  .resident-home .issues-section .section-heading {
+    margin: 0;
+  }
+
+  .resident-home .issues-section h1 {
+    font-size: 32px;
+    line-height: 39px;
+  }
+
+  .resident-home--issues .segmented {
+    display: none;
+  }
+
+  .resident-home--issues .filter-chips {
+    gap: 10px;
+    margin: 18px 0;
+  }
+
+  .resident-home--issues .issue-list {
+    max-width: 800px;
+    gap: 18px;
+  }
+
+  .resident-home--issues .issue-card {
+    min-height: 200px;
+  }
+
+  .resident-home--issues .issue-card__description {
+    max-width: 358px;
+  }
+
+  .resident-home--issues .issue-card__bottom {
+    width: 358px;
+    max-width: 100%;
+    align-self: flex-start;
+  }
+
+  .resident-home .resident-home__web-create {
+    display: block;
+    width: 160px;
+    min-height: 52px;
+    margin-top: 18px;
+    padding: 8px;
+    border-radius: 16px;
+    box-shadow: none;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .resident-home--home .resident-home__content {
+    max-width: 800px;
+  }
+}
+
+@media (max-width: 420px) {
+  .resident-home .issue-card__bottom {
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 369px) {
+  .resident-home .issue-card__top {
+    flex-wrap: wrap;
+  }
+}

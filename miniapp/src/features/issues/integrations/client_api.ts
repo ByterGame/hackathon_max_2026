@@ -52,6 +52,7 @@ export type NotificationSubject = "issue_card" | "resident_request";
 
 export interface IssuesClient {
   getSnapshot(role: Role): Promise<AppSnapshot>;
+  getIssue(id: string, role: Role): Promise<Issue>;
   suggestIssue(input: CreateIssueInput): Promise<IssueSuggestion>;
   createIssue(input: CreateIssueInput, idempotencyKey?: string): Promise<Issue>;
   supportIssue(id: string, report?: string, idempotencyKey?: string): Promise<SupportResult>;
@@ -62,9 +63,9 @@ export interface IssuesClient {
   editIssue(id: string, expectedVersion: number, input: EditIssueInput): Promise<Issue>;
   mergeIssues(leftId: string, rightId: string, finalTitle: string, finalStatus: Exclude<IssueStatus, "closed">, finalNote: string): Promise<Issue>;
   reopenIssue(id: string, reason: string): Promise<Issue>;
-  submitResidentRequest(input: Pick<ResidentRequest, "houseId" | "fullName" | "apartment">, idempotencyKey?: string): Promise<ResidentRequest>;
+  submitResidentRequest(input: Pick<ResidentRequest, "houseId" | "fullName" | "apartment"> & { entrance: number }, idempotencyKey?: string): Promise<ResidentRequest>;
   decideResidentRequest(id: string, outcome: "granted" | "denied", note: string): Promise<ResidentRequest>;
-  createResidentOffer(input: Omit<ResidentOffer, "id" | "status" | "createdAt" | "entrance">): Promise<ResidentOffer>;
+  createResidentOffer(input: Omit<ResidentOffer, "id" | "status" | "createdAt"> & { entrance: number }): Promise<ResidentOffer>;
   answerResidentOffer(id: string, accept: boolean): Promise<ResidentOffer>;
   assignStaff(companyId: string, phone: string, rights: StaffRights): Promise<StaffAssignment>;
   createCompanyRegistration(input: Pick<CompanyRegistrationRequest, "companyName" | "firstStaffPhone" | "explanation">): Promise<CompanyRegistrationRequest>;
@@ -144,7 +145,7 @@ function seed(): AppSnapshot {
     ],
     issues,
     residentRequests: [],
-    residentGrants: [{ id: "grant-demo", houseId: "pushkina-5", fullName: demoResident.name, phone: demoResident.phone, entrance: 2, apartment: 24, decidedBy: "УК «Дом-Сервис»", decidedAt: timeAgo(720) }],
+    residentGrants: [{ id: "grant-demo", apartmentId: "demo-apartment-24", houseId: "pushkina-5", fullName: demoResident.name, phone: demoResident.phone, entrance: 2, apartment: 24, decidedBy: "УК «Дом-Сервис»", decidedAt: timeAgo(720) }],
     residentOffers: [],
     staffAssignments: [{ id: "staff-demo", companyId: "demo-company", phone: "+79990000001", fullName: "Мария Иванова", rights: { manageStaff: true, manageResidents: true, manageIssues: true }, bound: true, createdAt: timeAgo(1440) }],
     companyRequests: [],
@@ -186,15 +187,7 @@ function visibleToResident(issue: Issue): boolean {
   if (!grants.length) return false;
   if (issue.authorId === demoResident.id || issue.scope.allHouse) return true;
   return grants.some((grant) => (grant.entrance !== undefined && issue.scope.entrances.includes(grant.entrance))
-    || issue.scope.apartments.some((item) => item.number === grant.apartment));
-}
-
-function hasActiveGrant(houseId: string): boolean {
-  return current().residentGrants.some((grant) =>
-    grant.houseId === houseId
-    && grant.phone === demoResident.phone
-    && (!grant.validUntil || new Date(grant.validUntil).getTime() > Date.now()),
-  );
+    || issue.scope.apartments.some((item) => item.number === grant.apartment && (item.entrance === undefined || item.entrance === grant.entrance)));
 }
 
 function normalizePhone(value: string): string {
@@ -203,10 +196,10 @@ function normalizePhone(value: string): string {
   throw new Error("Введите номер в формате +7 999 123-45-67");
 }
 
-function addGrant(houseId: string, apartment: number, fullName: string, phone: string, entrance?: number): ResidentGrant {
+function addGrant(houseId: string, apartment: number, fullName: string, phone: string, entrance: number): ResidentGrant {
   const existing = current().residentGrants.find((grant) => grant.houseId === houseId && grant.apartment === apartment && grant.phone === phone);
   if (existing) return existing;
-  const grant: ResidentGrant = { id: makeId(), houseId, entrance, apartment, fullName, phone, decidedBy: "УК «Дом-Сервис»", decidedAt: new Date().toISOString() };
+  const grant: ResidentGrant = { id: makeId(), apartmentId: makeId(), houseId, entrance, apartment, fullName, phone, decidedBy: "УК «Дом-Сервис»", decidedAt: new Date().toISOString() };
   current().residentGrants.push(grant);
   return grant;
 }
@@ -239,6 +232,12 @@ const demoIssuesClient: IssuesClient = {
     };
   },
 
+  async getIssue(id, role) {
+    const issue = getIssue(id);
+    if (role === "resident" && !visibleToResident(issue)) throw new Error("Проблема недоступна");
+    return structuredClone(issue);
+  },
+
   async suggestIssue(input) {
     const similarIssues = current().issues.filter((issue) =>
       issue.houseId === input.houseId
@@ -260,10 +259,16 @@ const demoIssuesClient: IssuesClient = {
     const title = assertText(input.title, "краткую формулировку");
     const description = assertText(input.description, "описание проблемы");
     const summaryDescription = assertText(input.summaryDescription ?? description, "сводное описание проблемы");
-    if (!input.scope.allHouse && input.scope.entrances.length === 0 && input.scope.apartments.length === 0) {
-      throw new Error("Укажите область проблемы");
-    }
-    if (!hasActiveGrant(input.houseId)) throw new Error("Нет действующего доступа к дому");
+    const grants = current().residentGrants.filter((item) => item.houseId === input.houseId && item.phone === demoResident.phone && (!item.validUntil || new Date(item.validUntil).getTime() > Date.now()));
+    if (!grants.length) throw new Error("Нет действующего доступа к дому");
+    const grant = input.apartmentId ? grants.find((item) => item.apartmentId === input.apartmentId) : grants.length === 1 ? grants[0] : undefined;
+    if (input.scopeLevel !== "house" && !grant) throw new Error("Выберите свою квартиру для этой проблемы");
+    if (input.scopeLevel === "entrance" && !grant?.entrance) throw new Error("В доступе к дому не указан подъезд. Уточните адрес у УК.");
+    const scope: IssueScope = input.scopeLevel === "house"
+      ? { allHouse: true, entrances: [], apartments: [] }
+      : input.scopeLevel === "entrance"
+        ? { allHouse: false, entrances: [grant!.entrance!], apartments: [] }
+        : { allHouse: false, entrances: [], apartments: [{ number: grant!.apartment, entrance: grant!.entrance }] };
     const now = new Date().toISOString();
     const issue: Issue = {
       id: makeId(),
@@ -273,7 +278,7 @@ const demoIssuesClient: IssuesClient = {
       description,
       summaryDescription,
       category: input.category,
-      scope: input.scope,
+      scope,
       status: "open",
       authorId: demoResident.id,
       supportsCount: 1,
@@ -404,7 +409,9 @@ const demoIssuesClient: IssuesClient = {
   },
 
   async submitResidentRequest(input) {
-    if (!current().houses.some((house) => house.id === input.houseId)) throw new Error("Дом не найден");
+    const house = current().houses.find((item) => item.id === input.houseId);
+    if (!house) throw new Error("Дом не найден");
+    if (!Number.isInteger(input.entrance) || input.entrance < 1 || (house.entranceCount && input.entrance > house.entranceCount)) throw new Error("Укажите корректный номер подъезда");
     if (!Number.isInteger(input.apartment) || input.apartment < 1) throw new Error("Укажите корректный номер квартиры");
     const request: ResidentRequest = {
       ...input,
@@ -427,13 +434,18 @@ const demoIssuesClient: IssuesClient = {
     request.outcome = outcome;
     request.status = "closed";
     request.decidedAt = new Date().toISOString();
-    if (outcome === "granted") addGrant(request.houseId, request.apartment, request.fullName, demoResident.phone, request.entrance);
+    if (outcome === "granted") {
+      if (!request.entrance) throw new Error("Перед выдачей доступа укажите подъезд жильца");
+      addGrant(request.houseId, request.apartment, request.fullName, demoResident.phone, request.entrance);
+    }
     save();
     return { ...request };
   },
 
   async createResidentOffer(input) {
-    if (!current().houses.some((house) => house.id === input.houseId)) throw new Error("Дом не найден");
+    const house = current().houses.find((item) => item.id === input.houseId);
+    if (!house) throw new Error("Дом не найден");
+    if (!Number.isInteger(input.entrance) || input.entrance < 1 || (house.entranceCount && input.entrance > house.entranceCount)) throw new Error("Укажите корректный номер подъезда");
     if (!Number.isInteger(input.apartment) || input.apartment < 1) throw new Error("Укажите корректный номер квартиры");
     const offer: ResidentOffer = { ...input, phone: normalizePhone(input.phone), id: makeId(), status: "pending", createdAt: new Date().toISOString() };
     current().residentOffers.unshift(offer);
@@ -446,7 +458,10 @@ const demoIssuesClient: IssuesClient = {
     if (!offer || offer.phone !== demoResident.phone) throw new Error("Предложение не найдено для вашего номера");
     if (offer.status !== "pending") throw new Error("На предложение уже ответили");
     offer.status = accept ? "accepted" : "declined";
-    if (accept) addGrant(offer.houseId, offer.apartment, demoResident.name, demoResident.phone, offer.entrance);
+    if (accept) {
+      if (!offer.entrance) throw new Error("В предложении не указан подъезд. Попросите УК создать новое предложение.");
+      addGrant(offer.houseId, offer.apartment, demoResident.name, demoResident.phone, offer.entrance);
+    }
     save();
     return { ...offer };
   },

@@ -6,6 +6,9 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 from maxapi import Bot
+from maxapi.enums import AttachmentType
+from maxapi.types import CallbackButton
+from maxapi.types.attachments import AttachmentButton, ButtonsPayload
 from sqlalchemy import or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -56,6 +59,33 @@ REQUEST_KINDS = {
     "company_registration_request": "company_registration",
     "house_addition_request": "house_addition",
 }
+
+
+def bot_notification_target(
+    subject_kind: str, subject_id: UUID, actor_kind: str
+) -> tuple[str, str | None]:
+    """Return the bot screen for a notification, without granting access to it."""
+    if subject_kind == "issue_card":
+        return "Проблема дома", f"i:card:{subject_id}"
+    if subject_kind == "resident_request":
+        return "Заявка на доступ", f"a:request:resident:{subject_id}"
+    if subject_kind == "company_registration_request":
+        return "Регистрация УК", f"a:request:company_registration:{subject_id}"
+    if subject_kind == "house_addition_request":
+        return "Подключение дома", f"a:request:house_addition:{subject_id}"
+    if subject_kind == "resident_offer":
+        return (
+            "Предложение доступа",
+            "a:staff_houses" if actor_kind == "employee" else f"a:offer:{subject_id}",
+        )
+    if subject_kind == "resident_grant":
+        return (
+            "Доступ к дому",
+            "a:staff_houses" if actor_kind == "employee" else "a:grants",
+        )
+    if subject_kind == "staff_assignment":
+        return "Назначение сотрудника", "a:staff_houses"
+    return "Уведомление", None
 
 
 def _now() -> datetime:
@@ -213,7 +243,7 @@ async def list_notifications(
 
 async def mark_read(
     session: AsyncSession, actor: User, notification_id: UUID
-) -> None:
+) -> Notification:
     notification = await session.scalar(
         select(Notification)
         .where(
@@ -229,6 +259,7 @@ async def mark_read(
     if notification.read_at is None:
         notification.read_at = _now()
         await session.commit()
+    return notification
 
 
 async def _recipient_ids(
@@ -434,13 +465,30 @@ async def deliver_bot_notifications_once(
             continue
         try:
             max_user_id = int(user.max_user_id)
+            subject_name, target = bot_notification_target(
+                notification.subject_kind, notification.subject_id, user.kind
+            )
+            button_text = (
+                "Открыть проблему"
+                if notification.subject_kind == "issue_card"
+                else "Открыть заявку"
+                if notification.subject_kind in REQUEST_KINDS
+                else "Открыть" if target else "Открыть уведомления"
+            )
+            button = CallbackButton(
+                text=button_text,
+                payload=f"n:open:{notification.id}" if target else "n:list",
+            )
             await asyncio.wait_for(
                 bot.send_message(
                     user_id=max_user_id,
-                    text=(
-                        "Есть обновление обращения. Откройте раздел «Уведомления» "
-                        "в боте или мини-приложении MAX, чтобы посмотреть детали."
-                    ),
+                    text=f"{subject_name}: есть обновление. Нажмите кнопку, чтобы открыть.",
+                    attachments=[
+                        AttachmentButton(
+                            type=AttachmentType.INLINE_KEYBOARD,
+                            payload=ButtonsPayload(buttons=[[button]]),
+                        )
+                    ],
                 ),
                 timeout=10,
             )

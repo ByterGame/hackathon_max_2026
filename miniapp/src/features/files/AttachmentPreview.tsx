@@ -1,29 +1,44 @@
 import { useEffect, useState } from "react";
 
+import { Icon } from "../../shared/common_ui/Icon";
 import { downloadFile, fetchPrivateFileBlob, type PrivateFile } from "./integrations/client_api";
 import "./attachment-preview.css";
 
-function isPreviewable(mimeType: string): boolean {
-  return mimeType.startsWith("image/") || mimeType.startsWith("video/") || mimeType === "application/pdf";
+type FileKind = "image" | "video" | "pdf" | "file";
+
+function fileKind(mimeType: string, name: string): FileKind {
+  if (mimeType.startsWith("image/")) return "image";
+  if (mimeType.startsWith("video/") || /\.(mp4|mov)$/i.test(name)) return "video";
+  if (mimeType === "application/pdf" || /\.pdf$/i.test(name)) return "pdf";
+  return "file";
 }
 
-function PreviewMedia({ url, mimeType, name }: { url: string; mimeType: string; name: string }) {
-  if (mimeType.startsWith("image/")) return <img className="attachment-preview__media" src={url} alt={name} loading="lazy" />;
-  if (mimeType.startsWith("video/")) return <video className="attachment-preview__media" src={url} controls preload="metadata" aria-label={name} />;
-  if (mimeType === "application/pdf") return <iframe className="attachment-preview__pdf" src={url} title={name} sandbox="allow-same-origin" loading="lazy" />;
-  return null;
+function fileLabel(kind: FileKind): string {
+  return { image: "Изображение", video: "Видео", pdf: "Документ PDF", file: "Файл" }[kind];
+}
+
+function fileSize(bytes: number): string {
+  return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} КиБ` : `${(bytes / (1024 * 1024)).toFixed(1)} МиБ`;
+}
+
+function FilePlaceholder({ kind, saved }: { kind: FileKind; saved: boolean }) {
+  const hint = kind === "image" ? (saved ? "Можно скачать оригинал" : "Предпросмотр изображения") : (saved ? "Скачайте, чтобы открыть" : "Предпросмотр недоступен");
+  return <div className={`attachment-preview__placeholder attachment-preview__placeholder--${kind}`}>
+    <span className="attachment-preview__file-icon"><Icon name={kind} size={30} /></span>
+    <strong>{fileLabel(kind)}</strong>
+    <small>{hint}</small>
+  </div>;
 }
 
 export function PrivateAttachmentPreview({ file }: { file: PrivateFile }) {
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(isPreviewable(file.mime_type));
+  const kind = fileKind(file.mime_type, file.original_name);
 
   useEffect(() => {
     setUrl(null);
     setError("");
-    setLoading(isPreviewable(file.mime_type));
-    if (!isPreviewable(file.mime_type)) return;
+    if (kind !== "image") return;
     let active = true;
     let objectUrl: string | null = null;
     void fetchPrivateFileBlob(file.id)
@@ -36,13 +51,12 @@ export function PrivateAttachmentPreview({ file }: { file: PrivateFile }) {
           URL.revokeObjectURL(created);
         }
       })
-      .catch((reason) => { if (active) setError(reason instanceof Error ? reason.message : "Не удалось открыть вложение"); })
-      .finally(() => { if (active) setLoading(false); });
+      .catch((reason) => { if (active) setError(reason instanceof Error ? reason.message : "Не удалось открыть изображение"); });
     return () => {
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [file.id, file.mime_type]);
+  }, [file.id, kind]);
 
   async function save() {
     setError("");
@@ -51,26 +65,26 @@ export function PrivateAttachmentPreview({ file }: { file: PrivateFile }) {
   }
 
   return <div className="attachment-preview">
-    {url && <PreviewMedia url={url} mimeType={file.mime_type} name={file.original_name} />}
-    {loading && <span className="attachment-preview__hint">Загружаем вложение…</span>}
-    <div className="attachment-preview__footer"><span title={file.original_name}>{file.original_name}</span><button type="button" className="button button--soft" onClick={() => void save()}>Скачать</button></div>
+    {url ? <img className="attachment-preview__media" src={url} alt={file.original_name} loading="lazy" onError={() => { setUrl(null); setError("Не удалось показать изображение. Можно скачать файл."); }} /> : <FilePlaceholder kind={kind} saved />}
+    <div className="attachment-preview__footer"><span className="attachment-preview__filename" title={file.original_name}>{file.original_name}<small>{fileSize(file.size_bytes)}</small></span><button type="button" className="button button--soft" onClick={() => void save()}><Icon name="download" size={16} /> Скачать</button></div>
     {error && <p className="form-error" role="alert">{error}</p>}
   </div>;
 }
 
 export function SelectedAttachmentPreview({ file, onRemove }: { file: File; onRemove?: () => void }) {
   const [url, setUrl] = useState<string | null>(null);
+  const kind = fileKind(file.type, file.name);
 
   useEffect(() => {
     setUrl(null);
-    if (!isPreviewable(file.type)) return;
+    if (kind !== "image") return;
     const objectUrl = URL.createObjectURL(file);
     setUrl(objectUrl);
     return () => URL.revokeObjectURL(objectUrl);
-  }, [file]);
+  }, [file, kind]);
 
   return <div className="attachment-preview">
-    {url && <PreviewMedia url={url} mimeType={file.type} name={file.name} />}
-    <div className="attachment-preview__footer"><span title={file.name}>{file.name}</span>{onRemove && <button type="button" className="button button--soft" onClick={onRemove}>Убрать</button>}</div>
+    {url ? <img className="attachment-preview__media" src={url} alt={file.name} onError={() => setUrl(null)} /> : <FilePlaceholder kind={kind} saved={false} />}
+    <div className="attachment-preview__footer"><span className="attachment-preview__filename" title={file.name}>{file.name}<small>{fileSize(file.size)}</small></span>{onRemove && <button type="button" className="button button--soft" onClick={onRemove}>Убрать</button>}</div>
   </div>;
 }

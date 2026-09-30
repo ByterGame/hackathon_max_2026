@@ -15,7 +15,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.db.models import Apartment, House, IssueCard, IssueCategory, IssueReport, IssueTarget, ResidentGrant, User
 
 from .gigachat import DEFAULT_AUTH_URL, DEFAULT_MODEL as DEFAULT_GIGACHAT_MODEL, gigachat_suggestion
-from .rules import can_view_issue
 from .service import IssueError
 
 
@@ -71,7 +70,6 @@ def _select_visible_candidates(
     *,
     cards: list[IssueCard],
     targets: list[IssueTarget],
-    actor_id: UUID,
     apartment_ids: set[UUID],
     entrance_numbers: set[int],
     description: str,
@@ -88,16 +86,14 @@ def _select_visible_candidates(
         if card.status == "closed" or card.merged_into_id is not None:
             continue
         card_targets = by_card.get(card.id, [])
-        if not can_view_issue(
-            has_house_access=True,
-            is_author=card.author_user_id == actor_id,
-            scope_all_house=card.scope_all_house,
-            granted_apartment_ids=apartment_ids,
-            granted_entrance_numbers=entrance_numbers,
-            target_apartment_ids={item.apartment_id for item in card_targets if item.apartment_id},
-            target_entrance_numbers={
-                item.entrance_number for item in card_targets if item.entrance_number is not None
-            },
+        target_apartment_ids = {item.apartment_id for item in card_targets if item.apartment_id}
+        target_entrance_numbers = {
+            item.entrance_number for item in card_targets if item.entrance_number is not None
+        }
+        if not (
+            card.scope_all_house
+            or apartment_ids & target_apartment_ids
+            or entrance_numbers & target_entrance_numbers
         ):
             continue
         score = len(words & _keywords(card.title))
@@ -149,6 +145,8 @@ async def _load_candidates(
     house_id: UUID,
     description: str,
     category_id: UUID | None,
+    scope: str = "house",
+    apartment_id: UUID | None = None,
 ) -> tuple[list[Candidate], str | None]:
     house = await session.get(House, house_id)
     if house is None or house.archived_at is not None:
@@ -170,8 +168,37 @@ async def _load_candidates(
     ).all()
     if not rows:
         raise IssueError("house_access_denied", "Нет действующего доступа к дому", 403)
-    apartment_ids = {row.id for row in rows}
-    entrance_numbers = {row.entrance_number for row in rows if row.entrance_number is not None}
+    if scope not in {"apartment", "entrance", "house"}:
+        raise IssueError("invalid_scope", "Выберите: квартира, подъезд или весь дом")
+    if scope == "house":
+        if apartment_id is not None:
+            raise IssueError("invalid_scope", "Для всего дома квартиру не выбирают")
+        apartment_ids: set[UUID] = set()
+        entrance_numbers: set[int] = set()
+    else:
+        owned = {row.id: row for row in rows}
+        if apartment_id is None and len(owned) != 1:
+            raise IssueError(
+                "apartment_selection_required",
+                "Выберите свою квартиру из подключённых к дому",
+            )
+        selected = owned.get(apartment_id) if apartment_id is not None else next(iter(owned.values()))
+        if selected is None:
+            raise IssueError(
+                "apartment_access_denied",
+                "Эта квартира не привязана к вашему аккаунту",
+                403,
+            )
+        if scope == "entrance" and selected.entrance_number is None:
+            raise IssueError(
+                "entrance_unknown",
+                "В вашей привязке не указан подъезд. Уточните его через УК",
+                409,
+            )
+        apartment_ids = {selected.id}
+        entrance_numbers = (
+            {selected.entrance_number} if selected.entrance_number is not None else set()
+        )
 
     category_name = None
     if category_id is not None:
@@ -201,7 +228,6 @@ async def _load_candidates(
                     IssueCard.merged_into_id.is_(None),
                     or_(
                         IssueCard.scope_all_house.is_(True),
-                        IssueCard.author_user_id == actor.id,
                         matching_target,
                     ),
                 )
@@ -224,7 +250,6 @@ async def _load_candidates(
     visible_candidates = _select_visible_candidates(
         cards=cards,
         targets=targets,
-        actor_id=actor.id,
         apartment_ids=apartment_ids,
         entrance_numbers=entrance_numbers,
         description=description,
@@ -372,6 +397,8 @@ async def suggest_issue(
     house_id: UUID,
     description: str,
     category_id: UUID | None = None,
+    scope: str = "house",
+    apartment_id: UUID | None = None,
 ) -> Suggestion:
     normalized_description = description.strip()
     if not normalized_description or len(normalized_description) > 1500:
@@ -392,7 +419,7 @@ async def suggest_issue(
         )
 
     candidates, category_name = await _load_candidates(
-        session, actor, house_id, normalized_description, category_id
+        session, actor, house_id, normalized_description, category_id, scope, apartment_id
     )
     if provider == "gigachat":
         key = os.getenv("GIGACHAT_AUTH_KEY", "").strip()

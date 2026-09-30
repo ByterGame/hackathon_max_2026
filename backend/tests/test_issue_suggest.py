@@ -61,14 +61,13 @@ class IssueSuggestionRulesTests(unittest.TestCase):
         result = _select_visible_candidates(
             cards=cards,
             targets=targets,
-            actor_id=UUID(int=7),
             apartment_ids={my_apartment},
             entrance_numbers={2},
             description="Лифт сломан",
             category_id=None,
         )
         self.assertEqual(
-            {item.id for item in result}, {UUID(int=1), UUID(int=3), UUID(int=6)}
+            {item.id for item in result}, {UUID(int=1), UUID(int=3)}
         )
 
     def test_recent_semantic_candidate_survives_lexical_ranking(self) -> None:
@@ -82,7 +81,6 @@ class IssueSuggestionRulesTests(unittest.TestCase):
         result = _select_visible_candidates(
             cards=cards,
             targets=[],
-            actor_id=UUID(int=99),
             apartment_ids=set(),
             entrance_numbers=set(),
             description="Сломался лифт",
@@ -197,6 +195,57 @@ class IssueSuggestionRulesTests(unittest.TestCase):
 
 
 class IssueSuggestionAsyncTests(unittest.IsolatedAsyncioTestCase):
+    async def test_two_owned_apartments_do_not_mix_private_suggestions(self) -> None:
+        house_id = UUID(int=20)
+        actor = SimpleNamespace(id=UUID(int=7), kind="resident")
+        first = SimpleNamespace(id=UUID(int=10), entrance_number=2)
+        second = SimpleNamespace(id=UUID(int=11), entrance_number=3)
+        cards = [
+            card(1, scope_all_house=True),
+            card(2),
+            card(3, author_user_id=actor.id),
+            card(4),
+        ]
+        targets = [
+            SimpleNamespace(card_id=UUID(int=2), apartment_id=first.id, entrance_number=None),
+            SimpleNamespace(card_id=UUID(int=3), apartment_id=second.id, entrance_number=None),
+            SimpleNamespace(card_id=UUID(int=4), apartment_id=None, entrance_number=2),
+        ]
+        session = SimpleNamespace(
+            get=AsyncMock(return_value=SimpleNamespace(archived_at=None)),
+            execute=AsyncMock(return_value=SimpleNamespace(all=lambda: [first, second])),
+            scalars=AsyncMock(side_effect=[
+                SimpleNamespace(all=lambda: cards),
+                SimpleNamespace(all=lambda: targets),
+            ]),
+        )
+        with patch(
+            "src.domain.issues.suggest._attach_candidate_descriptions",
+            new=AsyncMock(side_effect=lambda _session, candidates: candidates),
+        ):
+            result, _ = await _load_candidates(
+                session, actor, house_id, "Лифт сломан", None,
+                scope="apartment", apartment_id=first.id,
+            )
+        self.assertEqual({item.id for item in result}, {UUID(int=1), UUID(int=2), UUID(int=4)})
+        self.assertNotIn(UUID(int=3), {item.id for item in result})
+
+    async def test_unowned_apartment_cannot_be_used_to_search_suggestions(self) -> None:
+        first = SimpleNamespace(id=UUID(int=10), entrance_number=2)
+        session = SimpleNamespace(
+            get=AsyncMock(return_value=SimpleNamespace(archived_at=None)),
+            execute=AsyncMock(return_value=SimpleNamespace(all=lambda: [first])),
+            scalars=AsyncMock(),
+        )
+        with self.assertRaises(IssueError) as raised:
+            await _load_candidates(
+                session, SimpleNamespace(id=UUID(int=7), kind="resident"),
+                UUID(int=20), "Лифт сломан", None,
+                scope="apartment", apartment_id=UUID(int=11),
+            )
+        self.assertEqual(raised.exception.code, "apartment_access_denied")
+        session.scalars.assert_not_awaited()
+
     async def test_candidate_descriptions_are_bounded_and_queried_only_for_visible_ids(
         self,
     ) -> None:

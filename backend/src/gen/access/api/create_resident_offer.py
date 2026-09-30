@@ -7,7 +7,7 @@ from pydantic import AwareDatetime, BaseModel, conint, constr
 
 class Request(BaseModel):
     house_id: UUID
-    entrance_number: conint(ge=1) | None = None
+    entrance_number: conint(ge=1)
     apartment_number: conint(ge=1)
     phone_number: constr(min_length=1)
     valid_to: AwareDatetime | None = None

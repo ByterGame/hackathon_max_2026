@@ -114,10 +114,11 @@ export function resolveAccessCancellation(kind: AccessRequestKind, id: string, a
   return post("/access/resolve_cancellation", { request_kind: kind, request_id: id, accept });
 }
 
-export function updateResidentAccessRequest(id: string, fullName: string, apartment: number): Promise<void> {
+export function updateResidentAccessRequest(id: string, fullName: string, entrance: number, apartment: number): Promise<void> {
   return post("/access/update_resident_request", {
     request_id: id,
     full_name: fullName.trim(),
+    entrance_number: entrance,
     apartment_number: apartment,
   });
 }

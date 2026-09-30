@@ -21,10 +21,10 @@ class UsageError(ValueError):
 HELP = """Команды доступа (ID можно скопировать из списков):
 /access houses <часть адреса>
 /access profile [name <ФИО>] — посмотреть или явно изменить общее ФИО
-/access resident apply <house_id> <квартира> [ФИО при первой заявке]
-/access resident edit <request_id> <квартира>
+/access resident apply <house_id> <подъезд> <квартира> [ФИО при первой заявке]
+/access resident edit <request_id> <подъезд> <квартира>
 /access resident decide <request_id> grant|deny <пояснение> [until=2026-12-01T00:00:00+03:00]
-/access resident offer <house_id> <квартира> <телефон> [until=...]
+/access resident offer <house_id> <подъезд> <квартира> <телефон> [until=...]
 /access resident offers | grants | people <company_id> [house_id]
 /access resident respond <offer_id> yes|no
 /access resident extend <grant_id> <дата ISO>; revoke <grant_id> <причина>
@@ -198,34 +198,32 @@ async def _resident(session: AsyncSession, user: User, parts: list[str]) -> str:
     action = parts[1]
     if action == "apply":
         _required(
-            parts, 4, "/access resident apply <house_id> <квартира> [ФИО при первой заявке]"
+            parts, 5, "/access resident apply <house_id> <подъезд> <квартира> [ФИО при первой заявке]"
         )
-        legacy = len(parts) >= 6 and parts[4].isascii() and parts[4].isdecimal()
-        entrance = _positive(parts[3], "Номер подъезда") if legacy else None
-        apartment = _positive(parts[4] if legacy else parts[3])
+        entrance = _positive(parts[3], "Номер подъезда")
+        apartment = _positive(parts[4])
         row = await resident.create_resident_request(
             session,
             user,
             house_id=_uuid(parts[2]),
             apartment_number=apartment,
-            full_name=" ".join(parts[5 if legacy else 4:]).strip() or None,
-            **({"entrance_number": entrance} if entrance is not None else {}),
+            full_name=" ".join(parts[5:]).strip() or None,
+            entrance_number=entrance,
         )
         return f"Заявка отправлена: {row.id}. Статус: открыта."
     if action == "edit":
         _required(
-            parts, 4, "/access resident edit <request_id> <квартира>"
+            parts, 5, "/access resident edit <request_id> <подъезд> <квартира>"
         )
-        legacy = len(parts) >= 6 and parts[4].isascii() and parts[4].isdecimal()
-        entrance = _positive(parts[3], "Номер подъезда") if legacy else None
-        apartment = _positive(parts[4] if legacy else parts[3])
+        entrance = _positive(parts[3], "Номер подъезда")
+        apartment = _positive(parts[4])
         row = await resident.update_resident_request(
             session,
             user,
             request_id=_uuid(parts[2]),
             apartment_number=apartment,
-            full_name=" ".join(parts[5 if legacy else 4:]).strip() or None,
-            **({"entrance_number": entrance} if entrance is not None else {}),
+            full_name=" ".join(parts[5:]).strip() or None,
+            entrance_number=entrance,
         )
         return f"Заявка {row.id} исправлена."
     if action == "decide":
@@ -253,13 +251,12 @@ async def _resident(session: AsyncSession, user: User, parts: list[str]) -> str:
     if action == "offer":
         _required(
             parts,
-            5,
-            "/access resident offer <house_id> <квартира> <телефон> [until=...]",
+            6,
+            "/access resident offer <house_id> <подъезд> <квартира> <телефон> [until=...]",
         )
-        legacy = len(parts) >= 6 and not parts[5].startswith("until=")
-        entrance = _positive(parts[3], "Номер подъезда") if legacy else None
-        apartment = _positive(parts[4] if legacy else parts[3])
-        phone_index = 5 if legacy else 4
+        entrance = _positive(parts[3], "Номер подъезда")
+        apartment = _positive(parts[4])
+        phone_index = 5
         valid_to = _until(parts[phone_index + 1]) if len(parts) > phone_index + 1 else None
         row = await resident.create_resident_offer(
             session,
@@ -268,7 +265,7 @@ async def _resident(session: AsyncSession, user: User, parts: list[str]) -> str:
             apartment_number=apartment,
             phone_number=parts[phone_index],
             valid_to=valid_to,
-            **({"entrance_number": entrance} if entrance is not None else {}),
+            entrance_number=entrance,
         )
         return f"Предложение доступа создано: {row.id}. Жилец должен его принять."
     if action == "offers":

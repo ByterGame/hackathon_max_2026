@@ -11,7 +11,7 @@ class Request(BaseModel):
         None,
         description='Нужно только для первого явного подтверждения ФИО; позже можно не передавать, а другое значение требует отдельной смены профиля.',
     )
-    entrance_number: conint(ge=1) | None = None
+    entrance_number: conint(ge=1)
     apartment_number: conint(ge=1)
 
 

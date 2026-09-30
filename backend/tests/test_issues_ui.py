@@ -9,6 +9,7 @@ from uuid import uuid4
 from src.bot.handlers import issues_ui
 from src.bot.ui import UiReply
 from src.domain.issues.service import IssueError
+from src.domain.issues.staff_suggest import StaffMergeSuggestion
 
 
 class IssueUiTests(unittest.IsolatedAsyncioTestCase):
@@ -25,24 +26,99 @@ class IssueUiTests(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_unknown_entrance_gives_only_apartment_button(self) -> None:
-        self.session.execute = AsyncMock(
-            return_value=SimpleNamespace(all=lambda: [(None, 14)])
-        )
-        reply = await issues_ui._scope_options(
-            self.session,
-            self.actor,
-            SimpleNamespace(data={"house_id": str(uuid4())}),
-        )
+        apartment_id = uuid4()
+        self.session.get = AsyncMock(return_value=SimpleNamespace(archived_at=None))
+        with patch.object(
+            issues_ui, "_active_resident_apartments",
+            new=AsyncMock(return_value={apartment_id: SimpleNamespace(id=apartment_id, entrance_number=None, apartment_number=14)}),
+        ):
+            reply = await issues_ui._scope_options(
+                self.session, self.actor, SimpleNamespace(data={"house_id": str(uuid4())}),
+            )
         payloads = [button.payload for row in reply.buttons for button in row]
-        self.assertIn("i:scope:apartment:14", payloads)
-        self.assertFalse(any(payload.startswith("i:scope:entrance:") for payload in payloads))
+        self.assertIn("i:scope:apartment", payloads)
+        self.assertNotIn("i:scope:entrance", payloads)
+
+    async def test_multiple_grants_require_own_location_choice(self) -> None:
+        first_id, second_id = uuid4(), uuid4()
+        dialog = SimpleNamespace(
+            flow_kind="issue_new", step="scope", data={"house_id": str(uuid4())},
+        )
+        self.session.get = AsyncMock(return_value=SimpleNamespace(archived_at=None))
+        apartments = {
+            first_id: SimpleNamespace(id=first_id, entrance_number=2, apartment_number=14),
+            second_id: SimpleNamespace(id=second_id, entrance_number=3, apartment_number=41),
+        }
+        with (
+            patch.object(issues_ui, "get_dialog", new=AsyncMock(return_value=dialog)),
+            patch.object(issues_ui, "_active_resident_apartments", new=AsyncMock(return_value=apartments)),
+            patch.object(issues_ui, "update_dialog", new=AsyncMock()) as update,
+        ):
+            reply = await issues_ui.handle_action(self.session, self.actor, "i:scope:apartment")
+        payloads = [button.payload for row in reply.buttons for button in row]
+        self.assertIn(f"i:loc:{first_id}", payloads)
+        self.assertIn(f"i:loc:{second_id}", payloads)
+        update.assert_awaited_once()
+        self.assertEqual(update.await_args.kwargs["step"], "scope_location")
+
+    async def test_forged_location_button_does_not_create_draft(self) -> None:
+        own_id, foreign_id = uuid4(), uuid4()
+        dialog = SimpleNamespace(
+            flow_kind="issue_new", step="scope_location",
+            data={"house_id": str(uuid4()), "category_id": str(uuid4()),
+                  "description": "Нет света", "selected_scope": "apartment"},
+        )
+        self.session.get = AsyncMock(return_value=SimpleNamespace(archived_at=None))
+        with (
+            patch.object(issues_ui, "get_dialog", new=AsyncMock(return_value=dialog)),
+            patch.object(issues_ui, "_active_resident_apartments", new=AsyncMock(return_value={
+                own_id: SimpleNamespace(id=own_id, entrance_number=2, apartment_number=14),
+            })),
+            patch.object(issues_ui, "save_draft", new=AsyncMock()) as save,
+        ):
+            reply = await issues_ui.handle_action(self.session, self.actor, f"i:loc:{foreign_id}")
+        self.assertIn("подтверждённую квартиру", reply.text)
+        save.assert_not_awaited()
+
+    async def test_old_number_callback_cannot_select_any_apartment(self) -> None:
+        dialog = SimpleNamespace(flow_kind="issue_new", step="scope", data={"house_id": str(uuid4())})
+        with (
+            patch.object(issues_ui, "get_dialog", new=AsyncMock(return_value=dialog)),
+            patch.object(issues_ui, "save_draft", new=AsyncMock()) as save,
+        ):
+            reply = await issues_ui.handle_action(self.session, self.actor, "i:scope:apartment:99")
+        self.assertIn("неактуален", reply.text)
+        save.assert_not_awaited()
+
+    async def test_legacy_draft_requires_new_scope_selection(self) -> None:
+        house_id, draft_id = uuid4(), uuid4()
+        draft = SimpleNamespace(
+            id=draft_id, flow_kind="issue_card", submitted_at=None, revision=3,
+            payload={"house_id": str(house_id), "category_id": str(uuid4()),
+                     "description": "Нет света", "title": "Нет света",
+                     "scope_all_house": False, "target_apartments": [{"apartment_number": 99}]},
+        )
+        dialog = SimpleNamespace(flow_kind="issue_new", step="scope", data={}, draft_id=draft_id)
+        with (
+            patch.object(issues_ui, "get_draft", new=AsyncMock(return_value=draft)),
+            patch.object(issues_ui, "list_visible_cards", new=AsyncMock(return_value=[])),
+            patch.object(issues_ui, "set_dialog", new=AsyncMock(return_value=dialog)) as set_state,
+            patch.object(issues_ui, "_scope_options", new=AsyncMock(return_value=UiReply("Выберите область"))) as options,
+            patch.object(issues_ui, "save_draft", new=AsyncMock()) as save,
+        ):
+            reply = await issues_ui._resume(self.session, self.actor, draft_id)
+        self.assertEqual(reply.text, "Выберите область")
+        self.assertEqual(set_state.await_args.kwargs["step"], "scope")
+        options.assert_awaited_once()
+        save.assert_not_awaited()
 
     async def test_preview_offers_submission_only_after_attachment_step(self) -> None:
         data = {
             "title": "Нет света",
             "description": "В доме нет света",
             "summary_description": "Отсутствует электроснабжение в доме.",
-            "scope": "e:2+a:3:14",
+            "scope": "entrance",
+            "scope_label": "подъезд 2",
             "suggestions": [],
         }
         review = SimpleNamespace(step="review", data=data)
@@ -67,14 +143,14 @@ class IssueUiTests(unittest.IsolatedAsyncioTestCase):
             issues_ui._preview(review).text,
         )
         self.assertIn(
-            "Область: подъезды 2; квартиры 14", issues_ui._preview(review).text
+            "Область: подъезд 2", issues_ui._preview(review).text
         )
 
     async def test_preview_explains_automatic_check_source_and_warning(self) -> None:
         base = {
             "title": "Нет света",
             "description": "Нет света",
-            "scope": "all",
+            "scope": "house",
             "suggestions": [],
         }
         local = issues_ui._preview(
@@ -140,6 +216,56 @@ class IssueUiTests(unittest.IsolatedAsyncioTestCase):
         payloads = [button.payload for row in reply.buttons for button in row]
         self.assertIn(f"f:card:{card_id}", payloads)
         self.assertIn(f"i:discussion:{card_id}", payloads)
+        self.assertNotIn(f"i:merge_suggest:{card_id}", payloads)
+        staff = SimpleNamespace(id=uuid4(), kind="employee")
+        with (
+            patch.object(issues_ui, "get_visible_card", new=AsyncMock(return_value=card)),
+            patch.object(issues_ui, "is_muted", new=AsyncMock(return_value=False)),
+            patch.object(issues_ui, "_staff_can_manage", new=AsyncMock(return_value=True)),
+        ):
+            staff_reply = await issues_ui._card(self.session, staff, card_id)
+        staff_payloads = [button.payload for row in staff_reply.buttons for button in row]
+        self.assertIn(f"i:merge_suggest:{card_id}", staff_payloads)
+
+    async def test_staff_suggested_merge_buttons_reuse_manual_confirmation(self) -> None:
+        actor = SimpleNamespace(id=uuid4(), kind="employee")
+        card_id, candidate_id = uuid4(), uuid4()
+        with (
+            patch.object(
+                issues_ui, "_staff_merge_candidates",
+                new=AsyncMock(return_value=(
+                    StaffMergeSuggestion([candidate_id], "local"),
+                    [SimpleNamespace(id=candidate_id, title="Тот же лифт")],
+                )),
+            ) as suggest,
+            patch.object(issues_ui, "set_dialog", new=AsyncMock()) as set_state,
+        ):
+            reply = await issues_ui.handle_action(
+                self.session, actor, f"i:merge_suggest:{card_id}"
+            )
+        suggest.assert_awaited_once_with(self.session, actor, card_id)
+        self.assertIn("без нейросети", reply.text)
+        payloads = [button.payload for row in reply.buttons for button in row]
+        self.assertIn(f"i:merge_with:{candidate_id}", payloads)
+        self.assertIn(f"i:merge:{card_id}", payloads)
+        self.assertNotIn("i:merge_confirm", payloads)
+        self.assertEqual(set_state.await_args.kwargs["flow_kind"], "issue_merge")
+        self.assertEqual(set_state.await_args.kwargs["step"], "pick")
+
+    async def test_resident_forged_merge_suggestion_button_is_denied(self) -> None:
+        card_id = uuid4()
+        with (
+            patch.object(
+                issues_ui, "_staff_merge_candidates",
+                new=AsyncMock(side_effect=IssueError("issue_permission_denied", "Нет права", 403)),
+            ),
+            patch.object(issues_ui, "set_dialog", new=AsyncMock()) as set_state,
+        ):
+            reply = await issues_ui.handle_action(
+                self.session, self.actor, f"i:merge_suggest:{card_id}"
+            )
+        self.assertIn("Нет права", reply.text)
+        set_state.assert_not_awaited()
 
     async def test_house_cards_have_pages_and_restore_list_page(self) -> None:
         house_id = uuid4()
@@ -352,7 +478,8 @@ class IssueUiTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn(str(self.actor.id), first.text + last.text)
 
     async def test_scope_creates_shared_draft_before_review(self) -> None:
-        house_id, category_id, draft_id = uuid4(), uuid4(), uuid4()
+        house_id, category_id, draft_id, apartment_id = uuid4(), uuid4(), uuid4(), uuid4()
+        self.session.get = AsyncMock(return_value=SimpleNamespace(archived_at=None))
         dialog = SimpleNamespace(
             data={
                 "house_id": str(house_id),
@@ -381,15 +508,18 @@ class IssueUiTests(unittest.IsolatedAsyncioTestCase):
                 "save_draft",
                 new=AsyncMock(return_value=SimpleNamespace(id=draft_id, revision=1)),
             ) as save,
+            patch.object(issues_ui, "_active_resident_apartments", new=AsyncMock(return_value={
+                apartment_id: SimpleNamespace(id=apartment_id, entrance_number=2, apartment_number=14),
+            })),
         ):
             result = await issues_ui._prepare_preview(
-                self.session, self.actor, dialog, "e:2"
+                self.session, self.actor, dialog, "entrance", apartment_id
             )
         self.assertIsInstance(result, UiReply)
         self.assertEqual(dialog.step, "review")
         self.assertEqual(dialog.draft_id, draft_id)
-        self.assertEqual(save.await_args.kwargs["payload"]["target_entrances"], [2])
-        self.assertEqual(save.await_args.kwargs["payload"]["scope_all_house"], False)
+        self.assertEqual(save.await_args.kwargs["payload"]["scope"], "entrance")
+        self.assertEqual(save.await_args.kwargs["payload"]["apartment_id"], str(apartment_id))
         self.assertEqual(
             save.await_args.kwargs["payload"]["summary_description"],
             "Не работает лифт в подъезде.",
@@ -398,6 +528,8 @@ class IssueUiTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_local_preview_keeps_raw_and_summary_in_separate_fields(self) -> None:
         house_id, category_id = uuid4(), uuid4()
+        apartment_id = uuid4()
+        self.session.get = AsyncMock(return_value=SimpleNamespace(archived_at=None))
         dialog = SimpleNamespace(
             data={
                 "house_id": str(house_id),
@@ -418,13 +550,16 @@ class IssueUiTests(unittest.IsolatedAsyncioTestCase):
         )
         with (
             patch.object(issues_ui, "suggest_issue", new=AsyncMock(return_value=suggestion)),
+            patch.object(issues_ui, "_active_resident_apartments", new=AsyncMock(return_value={
+                apartment_id: SimpleNamespace(id=apartment_id, entrance_number=2, apartment_number=14),
+            })),
             patch.object(
                 issues_ui, "save_draft",
                 new=AsyncMock(return_value=SimpleNamespace(id=uuid4(), revision=1)),
             ) as save,
         ):
             reply = await issues_ui._prepare_preview(
-                self.session, self.actor, dialog, "all"
+                self.session, self.actor, dialog, "house"
             )
         payload = save.await_args.kwargs["payload"]
         self.assertEqual(payload["description"], "Лифт не работает с утра")
@@ -441,7 +576,7 @@ class IssueUiTests(unittest.IsolatedAsyncioTestCase):
                 "title": "Лифт",
                 "description": "Лифт не работает",
                 "summary_description": "Лифт неисправен.",
-                "scope": "all",
+                "scope": "house",
                 "draft_revision": 2,
                 "suggestions": [],
             },

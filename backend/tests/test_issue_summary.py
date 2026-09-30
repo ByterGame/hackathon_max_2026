@@ -19,13 +19,14 @@ class IssueSummaryTests(unittest.IsolatedAsyncioTestCase):
             add=Mock(),
             flush=AsyncMock(),
         )
+        self.apartment = SimpleNamespace(id=uuid4(), entrance_number=2)
 
     async def _create(self, *, description: str, summary_description: str | None = None) -> IssueCard:
         with (
             patch("src.domain.issues.service._house", new=AsyncMock(return_value=self.house)),
             patch(
-                "src.domain.issues.service._resident_locations",
-                new=AsyncMock(return_value=({uuid4()}, set())),
+                "src.domain.issues.service._active_resident_apartments",
+                new=AsyncMock(return_value={self.apartment.id: self.apartment}),
             ),
         ):
             return await create_card(
@@ -36,9 +37,7 @@ class IssueSummaryTests(unittest.IsolatedAsyncioTestCase):
                 title="Лифт не работает",
                 description=description,
                 summary_description=summary_description,
-                scope_all_house=True,
-                target_entrances=[],
-                target_apartments=[],
+                scope="house",
             )
 
     async def test_create_keeps_original_report_and_confirmed_summary_separate(self) -> None:

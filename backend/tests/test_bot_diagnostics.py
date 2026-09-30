@@ -288,6 +288,7 @@ class DeliveryStatsTests(unittest.IsolatedAsyncioTestCase):
         recipient_ids = [uuid4() for _ in range(4)]
         notifications = [
             SimpleNamespace(
+                id=uuid4(),
                 recipient_user_id=recipient_id,
                 subject_kind="issue_card",
                 subject_id=uuid4(),
@@ -298,9 +299,15 @@ class DeliveryStatsTests(unittest.IsolatedAsyncioTestCase):
             for recipient_id in recipient_ids
         ]
         users = {
-            recipient_ids[1]: SimpleNamespace(id=recipient_ids[1], max_user_id="2"),
-            recipient_ids[2]: SimpleNamespace(id=recipient_ids[2], max_user_id="3"),
-            recipient_ids[3]: SimpleNamespace(id=recipient_ids[3], max_user_id="4"),
+            recipient_ids[1]: SimpleNamespace(
+                id=recipient_ids[1], kind="resident", max_user_id="2"
+            ),
+            recipient_ids[2]: SimpleNamespace(
+                id=recipient_ids[2], kind="resident", max_user_id="3"
+            ),
+            recipient_ids[3]: SimpleNamespace(
+                id=recipient_ids[3], kind="resident", max_user_id="4"
+            ),
         }
         session = SimpleNamespace(
             scalars=AsyncMock(return_value=SimpleNamespace(all=lambda: notifications)),
@@ -308,7 +315,7 @@ class DeliveryStatsTests(unittest.IsolatedAsyncioTestCase):
             commit=AsyncMock(),
         )
 
-        async def send_message(*, user_id, text):
+        async def send_message(*, user_id, text, attachments):
             if user_id == 4:
                 raise RuntimeError("private phone 79991234567")
 

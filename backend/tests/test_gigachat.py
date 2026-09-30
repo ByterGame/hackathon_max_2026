@@ -2,7 +2,7 @@ import json
 import time
 import unittest
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import ANY, AsyncMock, Mock, patch
 from uuid import UUID
 
 from src.domain.issues import gigachat
@@ -85,13 +85,22 @@ class GigaChatSuggestionTests(unittest.IsolatedAsyncioTestCase):
                 "Лифт в доме не реагирует на вызов.",
             )
             response = await suggest_view(
-                SuggestRequest(house_id=UUID(int=2), description="Лифт сломан"),
+                SuggestRequest(house_id=UUID(int=2), description="Лифт сломан", scope="house"),
                 SimpleNamespace(),
                 SimpleNamespace(id=UUID(int=1)),
             )
         self.assertEqual(response.source, "gigachat")
         self.assertEqual(
             response.summary_description, "Лифт в доме не реагирует на вызов."
+        )
+        service.assert_awaited_once_with(
+            ANY,
+            ANY,
+            house_id=UUID(int=2),
+            description="Лифт сломан",
+            category_id=None,
+            scope="house",
+            apartment_id=None,
         )
 
     async def test_gigachat_needs_explicit_real_data_opt_in(self) -> None:

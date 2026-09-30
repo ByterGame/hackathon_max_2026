@@ -16,8 +16,8 @@ from src.db.models import Draft, User
 
 FLOW_FIELDS = {
     "issue_card": frozenset({
-        "house_id", "category_id", "title", "description", "summary_description", "scope_all_house",
-        "target_entrances", "target_apartments",
+        "house_id", "category_id", "title", "description", "summary_description", "scope",
+        "apartment_id",
     }),
     "resident_request": frozenset({
         "house_id", "full_name", "name_from_profile", "entrance_number", "apartment_number",

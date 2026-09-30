@@ -1363,6 +1363,36 @@ router.add_api_route(
     },
 )
 
+_handler = import_module('src.views.issues.suggest_merge')
+_models = import_module('src.gen.issues.api.suggest_merge')
+_RESPONSE_CODES_ISSUES_SUGGEST_MERGE = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/issues/suggest_merge',
+    endpoint=_with_response_codes(
+        _handler.suggest_merge,
+        _RESPONSE_CODES_ISSUES_SUGGEST_MERGE,
+    ),
+    methods=['POST'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/issues/suggest_merge', 'POST'
+    ) else [],
+    operation_id='issues_suggest_merge',
+    summary='Предложить сотруднику УК похожие активные проблемы для объединения',
+    description='Доступно сотруднику этой УК с правом управления проблемами. Ищет по всему дому, включая карточки других квартир. Карточки автоматически не объединяются.',
+    tags=['issues'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Список возможных совпадений, доступный только сотруднику УК.',
+            "model": _models.Response200,
+        },
+    },
+)
+
 _handler = import_module('src.views.issues.support_card')
 _models = import_module('src.gen.issues.api.support_card')
 _RESPONSE_CODES_ISSUES_SUPPORT_CARD = {

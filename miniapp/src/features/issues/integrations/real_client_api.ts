@@ -69,6 +69,7 @@ interface WireRequest {
 
 interface WireGrant {
   id: string;
+  apartment_id: string;
   house_id: string;
   address_display: string;
   entrance_number: number | null;
@@ -272,7 +273,7 @@ export const realIssuesClient: IssuesClient = {
       ]);
       grants = grantResponse.items.map((item) => {
         rememberHouse({ id: item.house_id, address: item.address_display, company: "УК дома" }, houseMap);
-        return { id: item.id, houseId: item.house_id, fullName: user.full_name ?? "Жилец", phone: user.phone_number ?? "", entrance: item.entrance_number ?? undefined, apartment: item.apartment_number, validUntil: item.valid_to ?? undefined, status: item.status, decidedBy: "УК дома", decidedAt: "" };
+        return { id: item.id, apartmentId: item.apartment_id, houseId: item.house_id, fullName: user.full_name ?? "Жилец", phone: user.phone_number ?? "", entrance: item.entrance_number ?? undefined, apartment: item.apartment_number, validUntil: item.valid_to ?? undefined, status: item.status, decidedBy: "УК дома", decidedAt: "" };
       });
       offers = offerResponse.items.map((item) => {
         rememberHouse({ id: item.house_id, address: item.address_display, company: "УК дома" }, houseMap);
@@ -319,6 +320,10 @@ export const realIssuesClient: IssuesClient = {
     return lastSnapshot;
   },
 
+  async getIssue(id) {
+    return loadIssue(id);
+  },
+
   async suggestIssue(input): Promise<IssueSuggestion> {
     const category = categoriesCache.find((item) => item.name === input.category);
     const response = await post<{
@@ -333,6 +338,8 @@ export const realIssuesClient: IssuesClient = {
       house_id: input.houseId,
       description: input.description.trim(),
       category_id: category?.id ?? null,
+      scope: input.scopeLevel,
+      ...(input.apartmentId ? { apartment_id: input.apartmentId } : {}),
     });
     const visibleIds = new Set(response.candidates.map((item) => item.id));
     const similarIssues = await Promise.all(response.similar_card_ids.filter((id) => visibleIds.has(id)).map((id) =>
@@ -357,9 +364,8 @@ export const realIssuesClient: IssuesClient = {
       title: input.title.trim(),
       description: input.description.trim(),
       summary_description: input.summaryDescription?.trim() || input.description.trim(),
-      scope_all_house: input.scope.allHouse,
-      target_entrances: input.scope.allHouse ? [] : input.scope.entrances,
-      target_apartments: input.scope.allHouse ? [] : input.scope.apartments.map((item) => ({ apartment_number: item.number })),
+      scope: input.scopeLevel,
+      ...(input.apartmentId ? { apartment_id: input.apartmentId } : {}),
     }, idempotencyKey);
     return loadIssue(response.card.id);
   },
@@ -422,7 +428,7 @@ export const realIssuesClient: IssuesClient = {
   },
 
   async submitResidentRequest(input, idempotencyKey) {
-    const response = await post<{ id: string; status: ResidentRequest["status"] }>("/access/create_resident_request", { house_id: input.houseId, full_name: input.fullName.trim(), apartment_number: input.apartment }, idempotencyKey);
+    const response = await post<{ id: string; status: ResidentRequest["status"] }>("/access/create_resident_request", { house_id: input.houseId, full_name: input.fullName.trim(), entrance_number: input.entrance, apartment_number: input.apartment }, idempotencyKey);
     return { ...input, id: response.id, status: response.status, createdAt: new Date().toISOString() };
   },
 
@@ -432,7 +438,7 @@ export const realIssuesClient: IssuesClient = {
   },
 
   async createResidentOffer(input) {
-    const response = await post<{ id: string; status: ResidentOffer["status"] }>("/access/create_resident_offer", { house_id: input.houseId, apartment_number: input.apartment, phone_number: input.phone });
+    const response = await post<{ id: string; status: ResidentOffer["status"] }>("/access/create_resident_offer", { house_id: input.houseId, entrance_number: input.entrance, apartment_number: input.apartment, phone_number: input.phone });
     return { ...input, id: response.id, status: response.status, createdAt: new Date().toISOString() };
   },
 

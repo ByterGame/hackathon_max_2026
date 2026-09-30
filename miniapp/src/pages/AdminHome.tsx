@@ -111,9 +111,9 @@ function AdminDetails({ item }: { item: Record<string, unknown> }) {
   </dl>;
 }
 
-export function AdminHome({ currentUserId, onOwnAccountChanged }: { currentUserId: string; onOwnAccountChanged: () => void }) {
+export function AdminHome({ currentUserId, onOwnAccountChanged, initialRecord, onNotifications, unreadCount }: { currentUserId: string; onOwnAccountChanged: () => void; initialRecord?: { entity: AdminEntity; id: string } | null; onNotifications?: () => void; unreadCount?: number }) {
   const [systemEditorOpen, setSystemEditorOpen] = useState(false);
-  const [entity, setEntity] = useState<AdminEntity>("users");
+  const [entity, setEntity] = useState<AdminEntity>(initialRecord?.entity ?? "users");
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
   const [requestKind, setRequestKind] = useState("");
@@ -121,7 +121,7 @@ export function AdminHome({ currentUserId, onOwnAccountChanged }: { currentUserI
   const [refreshKey, setRefreshKey] = useState(0);
   const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [page, setPage] = useState<AdminPage | null>(null);
-  const [selected, setSelected] = useState<AdminListItem | null>(null);
+  const [selected, setSelected] = useState<AdminListItem | null>(initialRecord ? { id: initialRecord.id, title: "Выбранная запись" } : null);
   const [detail, setDetail] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -194,7 +194,7 @@ export function AdminHome({ currentUserId, onOwnAccountChanged }: { currentUserI
   if (systemEditorOpen) return <SystemEditor onExit={() => setSystemEditorOpen(false)} currentUserId={currentUserId} onOwnAccountChanged={onOwnAccountChanged} />;
 
   return <div className="page page--admin">
-    <ScreenHeader title="Администрирование" subtitle="Полный обзор сервиса" icon="shield" />
+    <ScreenHeader title="Администрирование" subtitle="Полный обзор сервиса" icon="shield" action={onNotifications ? { label: "Уведомления", onClick: onNotifications, icon: "bell", badge: unreadCount } : undefined} />
     <div className="info-panel admin-intro"><Icon name="shield" size={20} /> Это отдельный кабинет администратора. Поддержка видит только обращения, переданные ей в работу.</div>
     <div className="panel system-entry"><div><strong>Системный редактор</strong><p>Для исключительных правок записей, включая идентификаторы и аудит. Требует причины и проверки версии.</p></div><button type="button" className="button button--soft" onClick={() => setSystemEditorOpen(true)}>Открыть системные операции</button></div>
     {overview && <div className="admin-overview" aria-label="Сводка по сервису">

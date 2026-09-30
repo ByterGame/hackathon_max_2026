@@ -1,0 +1,29 @@
+path: /issues/suggest_merge
+method: post
+summary: Предложить сотруднику УК похожие активные проблемы для объединения
+description: Доступно сотруднику этой УК с правом управления проблемами. Ищет по всему дому, включая карточки других квартир. Карточки автоматически не объединяются.
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema: {$ref: '#/schemas/Request'}
+responses:
+  '200':
+    description: Список возможных совпадений, доступный только сотруднику УК.
+    content:
+      application/json:
+        schema: {$ref: '#/schemas/Response200'}
+schemas:
+  Request:
+    type: object
+    required: [card_id]
+    properties:
+      card_id: {type: string, format: uuid}
+  Response200:
+    type: object
+    required: [similar_card_ids, source]
+    properties:
+      similar_card_ids:
+        type: array
+        items: {type: string, format: uuid}
+      source: {type: string, enum: [gigachat, local]}

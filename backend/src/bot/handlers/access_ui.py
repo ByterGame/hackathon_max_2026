@@ -104,7 +104,8 @@ def _kind(value: str) -> str:
 def _apply_review(data: dict[str, object]) -> UiReply:
     return _next(
         f"Проверьте заявку: {data['address']}; "
-        f"квартира {data['apartment_number']}; {data['full_name']}. "
+        f"подъезд {data['entrance_number']}, квартира {data['apartment_number']}; "
+        f"{data['full_name']}. "
         "Номер MAX подтверждает аккаунт, а проживание проверит УК.",
         [_button("Отправить заявку", "a:submit_apply")],
     )
@@ -200,6 +201,7 @@ async def _request_detail(
             [
                 f"Адрес: {item.get('address_display') or item['house_id']}",
                 f"ФИО: {item['submitted_full_name']}",
+                f"Подъезд: {item.get('submitted_entrance_number') or 'не указан'}",
                 f"Квартира {item['submitted_apartment_number']}",
             ]
         )
@@ -370,7 +372,7 @@ async def _save_apply_draft(
 ) -> None:
     payload = {
         key: data[key]
-        for key in ("house_id", "full_name", "name_from_profile", "apartment_number")
+        for key in ("house_id", "full_name", "name_from_profile", "entrance_number", "apartment_number")
         if key in data
     }
     if dialog.draft_id is None:
@@ -406,7 +408,6 @@ async def _start_apply(session: AsyncSession, actor: User, *, fresh: bool) -> Ui
             None,
         )
     data = dict(draft.payload) if draft else {}
-    data.pop("entrance_number", None)
     if has_confirmed_full_name(actor):
         data["full_name"] = actor.full_name
         data["name_from_profile"] = True
@@ -794,12 +795,12 @@ async def handle_action(
                     "confirm": "search",
                     "name": "search",
                     "entrance": "name",
-                    "apartment": "name",
+                    "apartment": "entrance",
                     "review": "apartment",
                 },
                 "access_edit": {
                     "entrance": None,
-                    "apartment": None,
+                    "apartment": "entrance",
                     "review": "apartment",
                 },
                 "access_profile": {"review": "name"},
@@ -826,7 +827,7 @@ async def handle_action(
                 "access_offer_new": {
                     "phone": "house",
                     "entrance": "phone",
-                    "apartment": "phone",
+                    "apartment": "entrance",
                     "review": "apartment",
                 },
             }
@@ -857,7 +858,7 @@ async def handle_action(
             "search": "Напишите улицу и номер подключённого дома.",
             "name": "Напишите ФИО или название УК заново.",
             "phone": "Напишите номер телефона заново.",
-            "entrance": "Напишите номер квартиры.",
+            "entrance": "Напишите номер подъезда заново.",
             "apartment": "Напишите номер квартиры заново.",
             "entrance_count": "Напишите количество подъездов заново.",
             "apartment_count": "Напишите количество квартир заново.",
@@ -877,8 +878,8 @@ async def handle_action(
         if house is None or house.archived_at is not None:
             raise ValueError("Дом больше не подключён. Поищите адрес заново.")
         data = dict(dialog.data)
-        data.pop("entrance_number", None)
         if data.get("house_id") != str(house.id):
+            data.pop("entrance_number", None)
             data.pop("apartment_number", None)
         data.update(house_id=str(house.id), address=house.address_display)
         await update_dialog(dialog, step="confirm", data=data)
@@ -901,14 +902,17 @@ async def handle_action(
             data.pop("full_name", None)
             data["name_from_profile"] = False
         await _save_apply_draft(session, actor, dialog, data)
-        if all(data.get(key) for key in ("full_name", "apartment_number")):
+        if all(data.get(key) for key in ("full_name", "entrance_number", "apartment_number")):
             await update_dialog(dialog, step="review")
             return _apply_review(data)
         if not data.get("full_name"):
             await update_dialog(dialog, step="name")
             return UiReply("Введите ваше ФИО один раз для общего профиля. Его увидит УК.")
+        if not data.get("entrance_number"):
+            await update_dialog(dialog, step="entrance")
+            return UiReply(f"ФИО из черновика: {data['full_name']}. Укажите номер подъезда.")
         await update_dialog(dialog, step="apartment")
-        return UiReply(f"ФИО из черновика: {data['full_name']}. Укажите номер квартиры.")
+        return UiReply(f"Подъезд {data['entrance_number']}. Укажите номер квартиры.")
     if action == "submit_apply":
         dialog = await _dialog(session, actor, "access_apply", "review")
         data = dict(dialog.data)
@@ -939,6 +943,7 @@ async def handle_action(
                 if not has_confirmed_full_name(actor)
                 else None
             ),
+            entrance_number=int(data["entrance_number"]),
             apartment_number=int(data["apartment_number"]),
         )
         await clear_dialog(session, actor.id)
@@ -995,12 +1000,12 @@ async def handle_action(
             session,
             actor.id,
             flow_kind="access_edit",
-            step="apartment",
+            step="entrance",
             data={"request_id": str(request_id)},
         )
         return UiReply(
             f"ФИО в заявке: {item['submitted_full_name']}. Чтобы изменить общее ФИО, "
-            "используйте «Моё ФИО» в меню. Напишите новый номер квартиры."
+            "используйте «Моё ФИО» в меню. Напишите новый номер подъезда."
         )
     if action == "submit_edit":
         dialog = await _dialog(session, actor, "access_edit", "review")
@@ -1010,6 +1015,7 @@ async def handle_action(
             actor,
             request_id=_uuid(str(data["request_id"])),
             full_name=None,
+            entrance_number=int(data["entrance_number"]),
             apartment_number=int(data["apartment_number"]),
         )
         await clear_dialog(session, actor.id)
@@ -1563,6 +1569,7 @@ async def handle_action(
             actor,
             house_id=_uuid(str(data["house_id"])),
             phone_number=str(data["phone"]),
+            entrance_number=int(data["entrance_number"]),
             apartment_number=int(data["apartment_number"]),
             valid_to=None,
         )
@@ -1702,14 +1709,22 @@ async def handle_text(
             data["full_name"] = value
             data["name_from_profile"] = False
             await _save_apply_draft(session, actor, dialog, data)
+            if data.get("entrance_number") and data.get("apartment_number"):
+                await update_dialog(dialog, step="review")
+                return _apply_review(data)
+            if data.get("entrance_number"):
+                await update_dialog(dialog, step="apartment")
+                return _next("Укажите номер квартиры целым числом.")
+            await update_dialog(dialog, step="entrance")
+            return _next("Укажите номер подъезда целым числом.")
+        if step == "entrance":
+            data["entrance_number"] = _positive(value, "Подъезд")
+            await _save_apply_draft(session, actor, dialog, data)
             if data.get("apartment_number"):
                 await update_dialog(dialog, step="review")
                 return _apply_review(data)
             await update_dialog(dialog, step="apartment")
             return _next("Укажите номер квартиры целым числом.")
-        if step == "entrance":
-            await update_dialog(dialog, step="apartment")
-            return _next("Подъезд больше не требуется. Укажите номер квартиры целым числом.")
         if step == "apartment":
             data["apartment_number"] = _positive(value, "Квартира")
             await _save_apply_draft(session, actor, dialog, data)
@@ -1725,16 +1740,18 @@ async def handle_text(
 
     if flow == "access_edit":
         if step == "name":
-            await update_dialog(dialog, step="apartment")
-            return _next("ФИО меняется через профиль. Напишите новый номер квартиры.")
+            await update_dialog(dialog, step="entrance")
+            return _next("ФИО меняется через профиль. Напишите новый номер подъезда.")
         if step == "entrance":
+            data["entrance_number"] = _positive(value, "Подъезд")
             await update_dialog(dialog, step="apartment", data=data)
-            return _next("Подъезд больше не требуется. Укажите новый номер квартиры.")
+            return _next("Укажите новый номер квартиры.")
         if step == "apartment":
             data["apartment_number"] = _positive(value, "Квартира")
             await update_dialog(dialog, step="review", data=data)
             return _next(
-                f"Сохранить номер квартиры {data['apartment_number']}? ФИО не меняется.",
+                f"Сохранить подъезд {data['entrance_number']}, квартиру {data['apartment_number']}? "
+                "ФИО не меняется.",
                 [_button("Сохранить исправления", "a:submit_edit")],
             )
         if step == "review":
@@ -1950,17 +1967,18 @@ async def handle_text(
             )
         if step == "phone":
             data["phone"] = normalize_phone(value)
+            await update_dialog(dialog, step="entrance", data=data)
+            return _next("Номер подъезда жильца?")
+        if step == "entrance":
+            data["entrance_number"] = _positive(value, "Подъезд")
             await update_dialog(dialog, step="apartment", data=data)
             return _next("Номер квартиры жильца?")
-        if step == "entrance":
-            await update_dialog(dialog, step="apartment", data=data)
-            return _next("Подъезд больше не требуется. Укажите номер квартиры жильца.")
         if step == "apartment":
             data["apartment_number"] = _positive(value, "Квартира")
             await update_dialog(dialog, step="review", data=data)
             return _next(
                 f"Предложить доступ номеру {data['phone']}: {data['address']}, "
-                f"квартира {data['apartment_number']}? "
+                f"подъезд {data['entrance_number']}, квартира {data['apartment_number']}? "
                 "Доступ появится только после согласия человека.",
                 [_button("Отправить предложение", "a:offer_submit")],
             )

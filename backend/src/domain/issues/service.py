@@ -121,6 +121,28 @@ async def _resident_locations(
     )
 
 
+async def _active_resident_apartments(
+    session: AsyncSession, actor: User, house: House
+) -> dict[UUID, Apartment]:
+    if actor.kind != "resident":
+        return {}
+    now = _now()
+    apartments = (
+        await session.scalars(
+            select(Apartment)
+            .join(ResidentGrant, ResidentGrant.apartment_id == Apartment.id)
+            .where(
+                ResidentGrant.user_id == actor.id,
+                Apartment.house_id == house.id,
+                ResidentGrant.valid_from <= now,
+                or_(ResidentGrant.valid_to.is_(None), ResidentGrant.valid_to > now),
+                ResidentGrant.revoked_at.is_(None),
+            )
+        )
+    ).all()
+    return {apartment.id: apartment for apartment in apartments}
+
+
 async def _house(session: AsyncSession, house_id: UUID) -> House:
     house = await session.get(House, house_id)
     if house is None or house.archived_at is not None:
@@ -325,15 +347,41 @@ async def create_card(
     category_id: UUID,
     title: str,
     description: str,
-    scope_all_house: bool,
-    target_entrances: list[int],
-    target_apartments: list[tuple[int | None, int]],
+    scope: str,
+    apartment_id: UUID | None = None,
     summary_description: str | None = None,
 ) -> IssueCard:
     house = await _house(session, house_id)
-    apartments, _ = await _resident_locations(session, actor, house)
+    apartments = await _active_resident_apartments(session, actor, house)
     if not apartments:
         raise IssueError("house_access_denied", "Нужен действующий доступ к дому", 403)
+    if scope not in {"apartment", "entrance", "house"}:
+        raise IssueError("invalid_scope", "Выберите: квартира, подъезд или весь дом")
+    if scope == "house" and apartment_id is not None:
+        raise IssueError("invalid_scope", "Для всего дома квартиру не выбирают")
+    target_apartment = None
+    if scope != "house":
+        if apartment_id is None:
+            if len(apartments) > 1:
+                raise IssueError(
+                    "apartment_selection_required",
+                    "Выберите свою квартиру из подключённых к дому",
+                )
+            target_apartment = next(iter(apartments.values()))
+        else:
+            target_apartment = apartments.get(apartment_id)
+            if target_apartment is None:
+                raise IssueError(
+                    "apartment_access_denied",
+                    "Эта квартира не привязана к вашему аккаунту",
+                    403,
+                )
+        if scope == "entrance" and target_apartment.entrance_number is None:
+            raise IssueError(
+                "entrance_unknown",
+                "В вашей привязке не указан подъезд. Уточните его через УК",
+                409,
+            )
     category = await session.get(IssueCategory, category_id)
     if category is None or not category.is_active:
         raise IssueError("invalid_category", "Категория не найдена")
@@ -346,10 +394,6 @@ async def create_card(
         if summary_description is not None
         else " ".join(description.split())[:1500]
     )
-    if scope_all_house and (target_entrances or target_apartments):
-        raise IssueError("invalid_scope", "Для всего дома отдельные цели не указываются")
-    if not scope_all_house and not (target_entrances or target_apartments):
-        raise IssueError("invalid_scope", "Укажите квартиру, подъезд или весь дом")
     now = _now()
     card = IssueCard(
         id=uuid4(),
@@ -359,7 +403,7 @@ async def create_card(
         title=title,
         summary_description=summary,
         status="open",
-        scope_all_house=scope_all_house,
+        scope_all_house=scope == "house",
         created_at=now,
         updated_at=now,
         version=1,
@@ -376,29 +420,22 @@ async def create_card(
         )
     )
     session.add(IssueSupport(card_id=card.id, user_id=actor.id, supported_at=now))
-    for entrance_number in set(target_entrances):
-        if entrance_number <= 0 or (
-            house.entrance_count is not None and entrance_number > house.entrance_count
-        ):
-            raise IssueError("invalid_target", "В доме нет такого подъезда")
+    if scope == "entrance":
         session.add(
             IssueTarget(
                 id=uuid4(),
                 card_id=card.id,
                 house_id=house.id,
-                entrance_number=entrance_number,
+                entrance_number=target_apartment.entrance_number,
             )
         )
-    for entrance_number, apartment_number in set(target_apartments):
-        apartment_id = await _get_or_create_apartment(
-            session, house, entrance_number, apartment_number
-        )
+    elif scope == "apartment":
         session.add(
             IssueTarget(
                 id=uuid4(),
                 card_id=card.id,
                 house_id=house.id,
-                apartment_id=apartment_id,
+                apartment_id=target_apartment.id,
             )
         )
     _record_issue_event(session, actor, card.id, "created")

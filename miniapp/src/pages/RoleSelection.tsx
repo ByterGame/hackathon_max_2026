@@ -10,7 +10,7 @@ export function RoleSelection({ onContinue, onRegister }: { onContinue: (role: R
 
   return (
     <div className="page page--welcome">
-      <ScreenHeader title="Управление домами" subtitle="Сервис обращений" icon="building" />
+      <ScreenHeader title="СвойДом" subtitle="Сервис обращений" icon="building" />
       <section className="welcome-intro">
         <span className="eyebrow">Добро пожаловать</span>
         <h2>Дом начинается с диалога</h2>

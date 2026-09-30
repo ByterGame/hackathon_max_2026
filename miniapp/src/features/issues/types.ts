@@ -32,6 +32,8 @@ export interface IssueScope {
   apartments: { number: number; entrance?: number }[];
 }
 
+export type IssueScopeLevel = "apartment" | "entrance" | "house";
+
 export interface IssueMessage {
   id: string;
   author: string;
@@ -79,6 +81,8 @@ export interface CreateIssueInput {
   description: string;
   summaryDescription?: string;
   scope: IssueScope;
+  scopeLevel: IssueScopeLevel;
+  apartmentId?: string;
 }
 
 export interface EditIssueInput {
@@ -147,6 +151,7 @@ export interface StaffAssignment {
 
 export interface ResidentGrant {
   id: string;
+  apartmentId?: string;
   houseId: string;
   fullName: string;
   phone: string;

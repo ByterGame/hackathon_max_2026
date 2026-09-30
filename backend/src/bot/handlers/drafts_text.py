@@ -7,7 +7,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.bot.handlers.issues_text import _category, _scope
+from src.bot.handlers.issues_text import _category, _resident_scope
 from src.db.models import File, IssueReport, User
 from src.domain.access.resident import create_resident_request
 from src.domain.access.rules import AccessRuleError
@@ -27,8 +27,9 @@ from src.gen.issues.api.create_card import Request as IssueCardBody
 DRAFT_HELP = (
     "Черновики доступны и в мини-приложении. Формат команд:\n"
     "/draft list [issue_card|resident_request] — список; /draft show UUID — открыть.\n"
-    "/draft save issue_card | UUID_дома | код_категории | all/e:1,2/a:12 | название | описание\n"
-    "/draft save resident_request | UUID_дома | квартира | ФИО\n"
+    "/draft save issue_card | UUID_дома | код_категории | дом/квартира/подъезд | название | описание\n"
+    "Если привязано несколько квартир, укажите квартира:НОМЕР или подъезд:НОМЕР своей локации.\n"
+    "/draft save resident_request | UUID_дома | подъезд | квартира | ФИО\n"
     "/filehelp — добавить фото, PDF или видео в черновик проблемы.\n"
     "Для обновления замените тип на «UUID_черновика revision» и повторите все поля.\n"
     "/draft send UUID revision — подать обращение и отметить черновик отправленным.\n"
@@ -78,35 +79,29 @@ async def _save_text(session: AsyncSession, actor: User, raw: str) -> str:
 
     fields = parts[1:]
     if flow_kind == "resident_request":
-        if len(fields) not in {3, 4} or not all(fields):
+        if len(fields) != 4 or not all(fields):
             raise ValueError(
-                "Формат: /draft save resident_request | UUID_дома | квартира | ФИО"
+                "Формат: /draft save resident_request | UUID_дома | подъезд | квартира | ФИО"
             )
-        legacy = len(fields) == 4
         payload = {
             "house_id": str(_uuid(fields[0])),
-            "apartment_number": _positive(fields[2] if legacy else fields[1]),
-            "full_name": fields[3] if legacy else fields[2],
+            "entrance_number": _positive(fields[1], "Номер подъезда"),
+            "apartment_number": _positive(fields[2]),
+            "full_name": fields[3],
         }
-        if legacy:
-            payload["entrance_number"] = _positive(fields[1], "Номер подъезда")
     else:
         if len(fields) != 5 or not all(fields):
             raise ValueError(
-                "Формат: /draft save issue_card | UUID_дома | код_категории | all/e:1,2/a:12 | название | описание"
+                "Формат: /draft save issue_card | UUID_дома | код_категории | дом/квартира/подъезд | название | описание"
             )
         category = await _category(session, fields[1])
-        scope_all, entrances, apartments = _scope(fields[2])
+        house_id = _uuid(fields[0])
+        scope, apartment_id = await _resident_scope(session, actor, house_id, fields[2])
         payload = {
-            "house_id": str(_uuid(fields[0])),
+            "house_id": str(house_id),
             "category_id": str(category.id),
-            "scope_all_house": scope_all,
-            "target_entrances": entrances,
-            "target_apartments": [
-                {"apartment_number": apartment}
-                | ({"entrance_number": entrance} if entrance is not None else {})
-                for entrance, apartment in apartments
-            ],
+            "scope": scope,
+            **({"apartment_id": str(apartment_id)} if apartment_id is not None else {}),
             "title": fields[3],
             "description": fields[4],
             "summary_description": fields[4],
@@ -153,12 +148,8 @@ async def _send_text(
                 title=body.title,
                 description=body.description,
                 summary_description=draft.payload.get("summary_description") or body.description,
-                scope_all_house=body.scope_all_house,
-                target_entrances=body.target_entrances or [],
-                target_apartments=[
-                    (item.entrance_number, item.apartment_number)
-                    for item in body.target_apartments or []
-                ],
+                scope=body.scope.value,
+                apartment_id=body.apartment_id,
             )
             report_id = await session.scalar(
                 select(IssueReport.id).where(
@@ -189,12 +180,8 @@ async def _send_text(
                 actor,
                 house_id=body.house_id,
                 full_name=body.full_name,
+                entrance_number=body.entrance_number,
                 apartment_number=body.apartment_number,
-                **(
-                    {"entrance_number": body.entrance_number}
-                    if body.entrance_number is not None
-                    else {}
-                ),
             )
     except (IssueError, AccessRuleError, FileError, ValueError):
         await session.rollback()

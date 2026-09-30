@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from src.bot.handlers.commands import _home, _notification_action
 from src.bot.handlers.notifications_text import handle_notification_text
+from src.domain.notifications.service import deliver_bot_notifications_once
 
 
 class BotNotificationUiTests(unittest.IsolatedAsyncioTestCase):
@@ -129,6 +130,25 @@ class BotNotificationUiTests(unittest.IsolatedAsyncioTestCase):
                     )
                 self.assertEqual(
                     reply.buttons[0][0].payload,
+                    f"n:open:{notification.id}",
+                )
+                with (
+                    patch(
+                        "src.bot.handlers.commands.mark_read",
+                        new_callable=AsyncMock,
+                        return_value=notification,
+                    ) as mark_read,
+                    patch(
+                        "src.bot.handlers.commands._handle_action",
+                        new_callable=AsyncMock,
+                    ) as open_card,
+                ):
+                    await _notification_action(
+                        SimpleNamespace(), actor, f"n:open:{notification.id}"
+                    )
+                mark_read.assert_awaited_once()
+                self.assertEqual(
+                    open_card.await_args.args[2],
                     f"a:request:{request_kind}:{request_id}",
                 )
 
@@ -156,6 +176,48 @@ class BotNotificationUiTests(unittest.IsolatedAsyncioTestCase):
                 for button in row
             )
         )
+
+    async def test_pushed_issue_notification_opens_the_same_card(self) -> None:
+        card_id = uuid4()
+        notification = SimpleNamespace(
+            id=uuid4(),
+            recipient_user_id=uuid4(),
+            subject_kind="issue_card",
+            subject_id=card_id,
+            bot_state="pending",
+            read_at=None,
+        )
+        user = SimpleNamespace(
+            id=notification.recipient_user_id, kind="resident", max_user_id="123456"
+        )
+        session = SimpleNamespace(
+            scalars=AsyncMock(return_value=SimpleNamespace(all=lambda: [notification])),
+            get=AsyncMock(return_value=user),
+            commit=AsyncMock(),
+        )
+        bot = SimpleNamespace(send_message=AsyncMock())
+        with (
+            patch(
+                "src.domain.notifications.service.can_view_subject",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "src.domain.notifications.service.is_muted",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+        ):
+            stats = await deliver_bot_notifications_once(session, bot)
+
+        self.assertEqual(stats.sent, 1)
+        self.assertEqual(notification.bot_state, "sent")
+        sent = bot.send_message.await_args.kwargs
+        self.assertEqual(sent["user_id"], 123456)
+        self.assertIn("Проблема дома", sent["text"])
+        button = sent["attachments"][0].payload.buttons[0][0]
+        self.assertEqual(button.text, "Открыть проблему")
+        self.assertEqual(button.payload, f"n:open:{notification.id}")
 
 
 if __name__ == "__main__":

@@ -113,7 +113,7 @@ class ProfileFullNameTests(unittest.IsolatedAsyncioTestCase):
             require.return_value = SimpleNamespace(id=house_id, archived_at=None, entrance_count=5)
             request = await create_resident_request(
                 self.session, self.user,
-                house_id=house_id, apartment_number=12, full_name="Иван Иванов",
+                house_id=house_id, entrance_number=2, apartment_number=12, full_name="Иван Иванов",
             )
         self.assertEqual(request.submitted_full_name, "Иван Иванов")
         self.assertEqual(self.user.full_name, "Иван Иванов")
@@ -137,7 +137,7 @@ class ProfileFullNameTests(unittest.IsolatedAsyncioTestCase):
             ]
             await update_resident_request(
                 self.session, self.user,
-                request_id=self.open_request.id, apartment_number=24,
+                request_id=self.open_request.id, entrance_number=3, apartment_number=24,
             )
         self.assertEqual(self.open_request.submitted_apartment_number, 24)
         self.assertEqual(self.open_request.submitted_full_name, "Старое ФИО")

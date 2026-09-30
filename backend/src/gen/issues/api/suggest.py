@@ -6,10 +6,24 @@ from uuid import UUID
 from pydantic import BaseModel, Field, constr
 
 
+class Scope(StrEnum):
+    apartment = 'apartment'
+    entrance = 'entrance'
+    house = 'house'
+
+
 class Request(BaseModel):
     house_id: UUID
     category_id: UUID | None = None
     description: constr(min_length=1, max_length=1500)
+    scope: Scope = Field(
+        ...,
+        description='Область новой проблемы. Похожие приватные карточки ищутся только в выбранной квартире.',
+    )
+    apartment_id: UUID | None = Field(
+        None,
+        description='Выбранная подтверждённая квартира; требуется при нескольких действующих привязках для области квартиры или подъезда.',
+    )
 
 
 class Candidate(BaseModel):

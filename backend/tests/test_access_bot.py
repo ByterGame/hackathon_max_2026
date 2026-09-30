@@ -132,25 +132,20 @@ class AccessBotTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertIn(str(request_id), result)
 
-    async def test_apply_needs_only_apartment_number(self) -> None:
+    async def test_apply_requires_entrance_number(self) -> None:
         house_id = uuid4()
         with patch(
             "src.bot.handlers.access_text.resident.create_resident_request",
             new_callable=AsyncMock,
         ) as create:
             create.return_value = SimpleNamespace(id=uuid4())
-            await handle_access_text(
+            reply = await handle_access_text(
                 self.session,
                 self.user,
                 f"/access resident apply {house_id} 15 Иван Иванов",
             )
-        create.assert_awaited_once_with(
-            self.session,
-            self.user,
-            house_id=house_id,
-            apartment_number=15,
-            full_name="Иван Иванов",
-        )
+        self.assertIn("Номер квартиры", reply)
+        create.assert_not_awaited()
 
     async def test_next_application_omits_full_name(self) -> None:
         house_id = uuid4()
@@ -160,9 +155,10 @@ class AccessBotTests(unittest.IsolatedAsyncioTestCase):
         ) as create:
             create.return_value = SimpleNamespace(id=uuid4())
             await handle_access_text(
-                self.session, self.user, f"/access resident apply {house_id} 15"
+                self.session, self.user, f"/access resident apply {house_id} 2 15"
             )
         self.assertIsNone(create.await_args.kwargs["full_name"])
+        self.assertEqual(create.await_args.kwargs["entrance_number"], 2)
 
     async def test_profile_name_command_uses_explicit_profile_scenario(self) -> None:
         with patch(
@@ -177,7 +173,22 @@ class AccessBotTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertIn("Иван Иванов", reply)
 
-    async def test_offer_needs_only_apartment_number(self) -> None:
+    async def test_offer_requires_entrance_number(self) -> None:
+        house_id = uuid4()
+        with patch(
+            "src.bot.handlers.access_text.resident.create_resident_offer",
+            new_callable=AsyncMock,
+        ) as create:
+            create.return_value = SimpleNamespace(id=uuid4())
+            reply = await handle_access_text(
+                self.session,
+                self.user,
+                f"/access resident offer {house_id} 15 79990000000",
+            )
+        self.assertIn("подъезд", reply)
+        create.assert_not_awaited()
+
+    async def test_offer_passes_entrance_number(self) -> None:
         house_id = uuid4()
         with patch(
             "src.bot.handlers.access_text.resident.create_resident_offer",
@@ -185,17 +196,12 @@ class AccessBotTests(unittest.IsolatedAsyncioTestCase):
         ) as create:
             create.return_value = SimpleNamespace(id=uuid4())
             await handle_access_text(
-                self.session,
-                self.user,
-                f"/access resident offer {house_id} 15 79990000000",
+                self.session, self.user,
+                f"/access resident offer {house_id} 2 15 79990000000",
             )
         create.assert_awaited_once_with(
-            self.session,
-            self.user,
-            house_id=house_id,
-            apartment_number=15,
-            phone_number="79990000000",
-            valid_to=None,
+            self.session, self.user, house_id=house_id, apartment_number=15,
+            phone_number="79990000000", valid_to=None, entrance_number=2,
         )
 
     async def test_invalid_id_gives_help_without_db_write(self) -> None:

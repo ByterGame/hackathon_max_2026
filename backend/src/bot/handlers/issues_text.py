@@ -8,15 +8,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.db.models import (
     Apartment,
     AuditEvent,
+    IssueCard,
     IssueCategory,
     IssueMessage,
     IssueReport,
     IssueSupport,
     IssueTarget,
+    House,
     User,
 )
 from src.domain.issues.service import (
     IssueError,
+    _active_resident_apartments,
     add_comment,
     create_card,
     edit_card,
@@ -29,6 +32,7 @@ from src.domain.issues.service import (
     support_card,
 )
 from src.domain.issues.suggest import suggest_issue
+from src.domain.issues.staff_suggest import StaffMergeSuggestion, suggest_staff_merges
 
 ISSUE_HELP = (
     "Проблемы дома:\n"
@@ -36,8 +40,9 @@ ISSUE_HELP = (
     "/issue UUID_карточки [страница] — карточка и обсуждение; "
     "/history UUID_карточки [страница] — история.\n"
     "/newissue UUID_дома | код_категории | область | название | описание — сообщить о проблеме. "
-    "/suggest UUID_дома | код_категории | описание — предложить название и дубли. "
-    "Область: all, e:1,2, a:12,18 или e:1,2+a:18.\n"
+    "/suggest UUID_дома | код_категории | область | описание — предложить название и дубли. "
+    "Для жильца область: дом, квартира или подъезд. Если привязано несколько квартир, "
+    "укажите квартира:НОМЕР или подъезд:НОМЕР своего подъезда.\n"
     "/support UUID_карточки | дополнение — поддержать (дополнение необязательно); "
     "/comment UUID_карточки | текст — написать в обсуждение; "
     "/filehelp — прикрепить фото, PDF или видео к карточке либо черновику; "
@@ -45,6 +50,7 @@ ISSUE_HELP = (
     "Сотруднику УК: /status UUID | статус | пояснение | результат — сменить статус "
     "(результат solved/invalid нужен только для closed); "
     "/edit UUID | версия | категория | область | название — изменить сводку; "
+    "/merge_suggest UUID_карточки — найти похожие карточки для объединения; "
     "/merge UUID UUID | статус | название | пояснение — объединить дубли."
 )
 
@@ -127,6 +133,7 @@ def _uuid(value: str) -> UUID:
 
 
 def _scope(value: str) -> tuple[bool, list[int], list[tuple[int | None, int]]]:
+    """Legacy multi-target syntax remains only for employee card edits."""
     scope = value.strip().lower()
     if scope in {"all", "дом", "весь дом"}:
         return True, [], []
@@ -168,6 +175,58 @@ def _scope(value: str) -> tuple[bool, list[int], list[tuple[int | None, int]]]:
     return False, sorted(entrances), [
         (entrance, apartment) for apartment, entrance in sorted(apartments.items())
     ]
+
+
+async def _resident_scope(
+    session: AsyncSession, actor: User, house_id: UUID, value: str
+) -> tuple[str, UUID | None]:
+    """Resolve a resident's textual scope only through their active grants."""
+    raw = value.strip().casefold()
+    if raw in {"дом", "весь дом", "house", "all"}:
+        return "house", None
+    kind, separator, selected = raw.partition(":")
+    scope = {
+        "квартира": "apartment",
+        "apartment": "apartment",
+        "a": "apartment",
+        "подъезд": "entrance",
+        "entrance": "entrance",
+        "e": "entrance",
+    }.get(kind)
+    if scope is None:
+        raise ValueError("Область жильца: дом, квартира или подъезд; чужие номера указать нельзя")
+    if separator and (not selected.isascii() or not selected.isdecimal() or int(selected) < 1):
+        raise ValueError("После двоеточия укажите номер своей квартиры или подъезда")
+    house = await session.get(House, house_id)
+    if house is None or house.archived_at is not None:
+        raise IssueError("house_not_found", "Дом не найден", 404)
+    apartments = await _active_resident_apartments(session, actor, house)
+    if not apartments:
+        raise IssueError("house_access_denied", "Нужен действующий доступ к дому", 403)
+    if separator:
+        number = int(selected)
+        matching = [
+            apartment
+            for apartment in apartments.values()
+            if (apartment.apartment_number if scope == "apartment" else apartment.entrance_number)
+            == number
+        ]
+        if not matching:
+            raise IssueError(
+                "location_access_denied",
+                "Этот номер не относится к вашей квартире или подъезду",
+                403,
+            )
+        return scope, matching[0].id
+    if len(apartments) == 1:
+        return scope, next(iter(apartments))
+    if scope == "entrance":
+        known = {apartment.entrance_number for apartment in apartments.values()}
+        if len(known) == 1 and None not in known:
+            return scope, next(iter(apartments))
+    raise ValueError(
+        "К этому дому привязано несколько квартир. Укажите квартира:НОМЕР или подъезд:НОМЕР из своих привязок"
+    )
 
 
 async def _category(session: AsyncSession, code: str) -> IssueCategory:
@@ -247,6 +306,30 @@ async def _card_text(
     return _paged_text("\n".join(lines), page, f"/issue {card.id}")
 
 
+async def _staff_merge_candidates(
+    session: AsyncSession, actor: User, card_id: UUID
+) -> tuple[StaffMergeSuggestion, list[IssueCard]]:
+    """Apply the domain permission check before reading suggested card details."""
+    result = await suggest_staff_merges(session, actor, card_id)
+    if not result.similar_card_ids:
+        return result, []
+    source = await session.get(IssueCard, card_id)
+    if source is None:
+        raise IssueError("issue_not_found", "Проблема не найдена", 404)
+    candidates = (
+        await session.scalars(
+            select(IssueCard).where(
+                IssueCard.id.in_(result.similar_card_ids),
+                IssueCard.house_id == source.house_id,
+                IssueCard.status != "closed",
+                IssueCard.merged_into_id.is_(None),
+            )
+        )
+    ).all()
+    by_id = {card.id: card for card in candidates}
+    return result, [by_id[card_id] for card_id in result.similar_card_ids if card_id in by_id]
+
+
 async def handle_issue_text(
     session: AsyncSession, actor: User, text: str
 ) -> str | None:
@@ -266,6 +349,7 @@ async def handle_issue_text(
         "/status",
         "/reopen",
         "/merge",
+        "/merge_suggest",
         "/edit",
     }:
         return None
@@ -333,16 +417,20 @@ async def handle_issue_text(
             )
             return _paged_text("\n".join(lines), page, f"/history {card.id}")
         if command == "/suggest":
-            house, category_code, description = _parts(argument, count=3)
+            house, category_code, area, description = _parts(argument, count=4)
+            house_id = _uuid(house)
+            scope, apartment_id = await _resident_scope(session, actor, house_id, area)
             category_id = None
             if category_code != "-":
                 category_id = (await _category(session, category_code)).id
             result = await suggest_issue(
                 session,
                 actor,
-                house_id=_uuid(house),
+                house_id=house_id,
                 description=description,
                 category_id=category_id,
+                scope=scope,
+                apartment_id=apartment_id,
             )
             lines = [f"Предложенное название: {result.suggested_title}"]
             summary = getattr(result, "summary_description", None)
@@ -384,20 +472,20 @@ async def handle_issue_text(
             )
             return "\n".join(lines)
         if command == "/newissue":
-            house, category_code, scope, title, description = _parts(argument, count=5)
-            all_house, entrances, apartments = _scope(scope)
+            house, category_code, area, title, description = _parts(argument, count=5)
+            house_id = _uuid(house)
+            scope, apartment_id = await _resident_scope(session, actor, house_id, area)
             category = await _category(session, category_code)
             card = await create_card(
                 session,
                 actor,
-                house_id=_uuid(house),
+                house_id=house_id,
                 category_id=category.id,
                 title=title,
                 description=description,
                 summary_description=description,
-                scope_all_house=all_house,
-                target_entrances=entrances,
-                target_apartments=apartments,
+                scope=scope,
+                apartment_id=apartment_id,
             )
             await session.commit()
             return f"Проблема создана: {card.title}\nID: {card.id}"
@@ -433,6 +521,17 @@ async def handle_issue_text(
             card = await reopen_card(session, actor, _uuid(card_id), comment)
             await session.commit()
             return f"Карточка переоткрыта: {card.id}"
+        if command == "/merge_suggest":
+            card_id = _uuid(argument)
+            result, candidates = await _staff_merge_candidates(session, actor, card_id)
+            source = "GigaChat" if result.source == "gigachat" else "локальный поиск без нейросети"
+            lines = [f"Похожие карточки для объединения ({source}):"]
+            if candidates:
+                lines.extend(f"{card.id} — {card.title}" for card in candidates)
+                lines.append("Проверьте карточки командой /issue и объедините вручную через /merge.")
+            else:
+                lines.append("Похожих открытых карточек не найдено. Можно проверить /issues вручную.")
+            return "\n".join(lines)
         if command == "/merge":
             ids, status, title, note = _parts(argument, count=4)
             two_ids = ids.split()

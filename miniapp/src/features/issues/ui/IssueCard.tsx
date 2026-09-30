@@ -2,11 +2,14 @@ import { Icon } from "../../../shared/common_ui/Icon";
 import { formatDate, formatIssueScope, issueStatusLabels, type Issue } from "../types";
 
 export function IssueCard({ issue, onOpen, compact = false }: { issue: Issue; onOpen: () => void; compact?: boolean }) {
+  const statusLabel = issue.status === "closed"
+    ? issue.closeResult === "solved" ? "Решена" : issue.closeResult === "invalid" ? "Некорректная" : issueStatusLabels.closed
+    : issueStatusLabels[issue.status];
   return (
     <button type="button" className={`issue-card ${compact ? "issue-card--compact" : ""}`} onClick={onOpen}>
       <span className="issue-card__top">
         <span className="issue-card__title">{issue.title}</span>
-        <span className={`status status--${issue.status}`}>{issue.status === "closed" && issue.closeResult === "solved" ? "Решена" : issueStatusLabels[issue.status]}</span>
+        <span className={`status status--${issue.status}${issue.status === "closed" && issue.closeResult === "invalid" ? " status--invalid" : ""}`}>{statusLabel}</span>
       </span>
       <span className="issue-card__meta"><Icon name="pin" size={16} /> {formatIssueScope(issue.scope)}</span>
       {!compact && <span className="issue-card__description">{issue.summaryDescription || issue.description}</span>}

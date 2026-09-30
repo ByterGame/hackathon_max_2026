@@ -50,7 +50,7 @@ class AccessUiTests(unittest.IsolatedAsyncioTestCase):
         self.actor.full_name_confirmed_at = object()
         dialog = SimpleNamespace(
             flow_kind="access_apply", step="confirm", draft_id=None,
-            data={"house_id": str(uuid4()), "address": "Пушкина, 5", "apartment_number": 12},
+            data={"house_id": str(uuid4()), "address": "Пушкина, 5", "entrance_number": 2, "apartment_number": 12},
         )
         with (
             patch("src.bot.handlers.access_ui.get_dialog", new_callable=AsyncMock, return_value=dialog),
@@ -60,6 +60,23 @@ class AccessUiTests(unittest.IsolatedAsyncioTestCase):
             reply = await handle_action(self.session, self.actor, "a:confirm_house")
         self.assertEqual(update.await_args.kwargs["step"], "review")
         self.assertIn("Иван Иванов", reply.text)
+
+    async def test_old_access_draft_without_entrance_requires_it_before_review(self) -> None:
+        self.actor.full_name = "Иван Иванов"
+        self.actor.full_name_is_manual = True
+        self.actor.full_name_confirmed_at = object()
+        dialog = SimpleNamespace(
+            flow_kind="access_apply", step="confirm", draft_id=uuid4(),
+            data={"house_id": str(uuid4()), "address": "Пушкина, 5", "apartment_number": 12},
+        )
+        with (
+            patch("src.bot.handlers.access_ui.get_dialog", new_callable=AsyncMock, return_value=dialog),
+            patch("src.bot.handlers.access_ui._save_apply_draft", new_callable=AsyncMock),
+            patch("src.bot.handlers.access_ui.update_dialog", new_callable=AsyncMock) as update,
+        ):
+            reply = await handle_action(self.session, self.actor, "a:confirm_house")
+        self.assertEqual(update.await_args.kwargs["step"], "entrance")
+        self.assertIn("номер подъезда", reply.text)
 
     async def test_unconfirmed_name_is_not_implicitly_reused_from_profile_draft(self) -> None:
         dialog = SimpleNamespace(
@@ -158,6 +175,7 @@ class AccessUiTests(unittest.IsolatedAsyncioTestCase):
                 "house_id": str(uuid4()),
                 "address": "Пушкина, 5",
                 "full_name": "Иван Иванов",
+                "entrance_number": 2,
                 "apartment_number": 24,
                 "draft_revision": 3,
             },
@@ -178,7 +196,7 @@ class AccessUiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(update.await_args.kwargs["step"], "review")
         self.assertIn("Пушкина, 5", reply.text)
         self.assertIn("Иван Иванов", reply.text)
-        self.assertNotIn("подъезд", reply.text)
+        self.assertIn("подъезд 2", reply.text)
         self.assertEqual(reply.buttons[0][0].payload, "a:submit_apply")
 
     async def test_resident_draft_is_created_with_partial_data(self) -> None:
@@ -198,11 +216,11 @@ class AccessUiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(dialog.draft_id, draft_id)
         self.assertEqual(data["draft_revision"], 1)
         self.assertEqual(
-            save.await_args.kwargs["payload"], {"house_id": data["house_id"]}
+            save.await_args.kwargs["payload"], {"house_id": data["house_id"], "entrance_number": 2}
         )
         update.assert_awaited_once()
 
-    async def test_apply_name_step_goes_directly_to_apartment(self) -> None:
+    async def test_apply_name_step_asks_for_entrance(self) -> None:
         dialog = SimpleNamespace(
             flow_kind="access_apply", step="name", data={"house_id": str(uuid4())}
         )
@@ -211,10 +229,24 @@ class AccessUiTests(unittest.IsolatedAsyncioTestCase):
             patch("src.bot.handlers.access_ui.update_dialog", new_callable=AsyncMock) as update,
         ):
             reply = await handle_text(self.session, self.actor, dialog, "Иван Иванов")
+        self.assertEqual(update.await_args.kwargs["step"], "entrance")
+        self.assertIn("номер подъезда", reply.text)
+
+    async def test_apply_entrance_step_persists_to_shared_draft(self) -> None:
+        dialog = SimpleNamespace(
+            flow_kind="access_apply", step="entrance", data={"house_id": str(uuid4())}
+        )
+        with (
+            patch("src.bot.handlers.access_ui._save_apply_draft", new_callable=AsyncMock) as save,
+            patch("src.bot.handlers.access_ui.update_dialog", new_callable=AsyncMock) as update,
+        ):
+            reply = await handle_text(self.session, self.actor, dialog, "2")
+        self.assertEqual(save.await_args.args[3]["entrance_number"], 2)
         self.assertEqual(update.await_args.kwargs["step"], "apartment")
+        save.assert_awaited_once()
         self.assertIn("номер квартиры", reply.text)
 
-    async def test_offer_phone_step_goes_directly_to_apartment(self) -> None:
+    async def test_offer_phone_step_asks_for_entrance(self) -> None:
         dialog = SimpleNamespace(
             flow_kind="access_offer_new", step="phone", data={"house_id": str(uuid4())}
         )
@@ -222,8 +254,18 @@ class AccessUiTests(unittest.IsolatedAsyncioTestCase):
             "src.bot.handlers.access_ui.update_dialog", new_callable=AsyncMock
         ) as update:
             reply = await handle_text(self.session, self.actor, dialog, "+79990000000")
+        self.assertEqual(update.await_args.kwargs["step"], "entrance")
+        self.assertIn("номер подъезда", reply.text.lower())
+
+    async def test_offer_entrance_step_precedes_apartment(self) -> None:
+        dialog = SimpleNamespace(
+            flow_kind="access_offer_new", step="entrance", data={"house_id": str(uuid4()), "phone": "79990000000"}
+        )
+        with patch("src.bot.handlers.access_ui.update_dialog", new_callable=AsyncMock) as update:
+            reply = await handle_text(self.session, self.actor, dialog, "3")
         self.assertEqual(update.await_args.kwargs["step"], "apartment")
-        self.assertIn("номер квартиры", reply.text.lower())
+        self.assertEqual(update.await_args.kwargs["data"]["entrance_number"], 3)
+        self.assertIn("квартиры", reply.text)
 
     async def test_resident_draft_update_uses_current_revision(self) -> None:
         draft_id = uuid4()
@@ -282,6 +324,7 @@ class AccessUiTests(unittest.IsolatedAsyncioTestCase):
             self.actor,
             house_id=house_id,
             full_name="Иван Иванов",
+            entrance_number=2,
             apartment_number=24,
         )
         clear.assert_awaited_once_with(self.session, self.actor.id)

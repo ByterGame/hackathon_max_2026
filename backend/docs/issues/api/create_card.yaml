@@ -13,15 +13,9 @@ responses:
       application/json:
         schema: {$ref: '#/schemas/Response201'}
 schemas:
-  TargetApartment:
-    type: object
-    required: [apartment_number]
-    properties:
-      entrance_number: {type: integer, minimum: 1}
-      apartment_number: {type: integer, minimum: 1}
   Request:
     type: object
-    required: [house_id, category_id, title, description, scope_all_house]
+    required: [house_id, category_id, title, description, scope]
     properties:
       house_id: {type: string, format: uuid}
       category_id: {type: string, format: uuid}
@@ -32,13 +26,14 @@ schemas:
         minLength: 1
         maxLength: 1500
         description: Сводное описание общей карточки. Если отсутствует, берётся исходное описание жителя.
-      scope_all_house: {type: boolean}
-      target_entrances:
-        type: array
-        items: {type: integer, minimum: 1}
-      target_apartments:
-        type: array
-        items: {$ref: '#/schemas/TargetApartment'}
+      scope:
+        type: string
+        enum: [apartment, entrance, house]
+        description: Область проблемы. Квартира и подъезд определяются сервером по действующему доступу жителя.
+      apartment_id:
+        type: string
+        format: uuid
+        description: Нужен только при нескольких действующих квартирах в доме; значение берётся из /access/list_grants.
   Response201:
     type: object
     required: [card]

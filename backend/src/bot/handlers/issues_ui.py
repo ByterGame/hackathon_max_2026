@@ -12,7 +12,7 @@ from src.bot.handlers.issues_text import (
     _page_bounds,
     _page_number,
     _participant_label,
-    _scope,
+    _staff_merge_candidates,
     _text_chunks,
 )
 from src.bot.ui import (
@@ -43,6 +43,7 @@ from src.domain.files.service import attach
 from src.domain.issues.rules import ACTIVE_STATUSES
 from src.domain.issues.service import (
     IssueError,
+    _active_resident_apartments,
     add_comment,
     edit_card,
     get_visible_card,
@@ -332,6 +333,7 @@ async def _card(
             ]
         )
         if card.status in ACTIVE_STATUSES:
+            buttons.append(_button("Найти похожие", f"i:merge_suggest:{card.id}"))
             buttons.append(_button("Объединить с другой", f"i:merge:{card.id}"))
     buttons.append(_button("К списку проблем", f"i:house:{card.house_id}:{list_page}"))
     return UiReply("\n".join(lines)[:3500], buttons)
@@ -434,51 +436,85 @@ async def _scope_options(
     session: AsyncSession, actor: User, dialog: BotDialog
 ) -> UiReply:
     house_id = _uuid(str(dialog.data["house_id"]))
-    now = datetime.now(UTC)
-    locations = (
-        await session.execute(
-            select(Apartment.entrance_number, Apartment.apartment_number)
-            .join(ResidentGrant, ResidentGrant.apartment_id == Apartment.id)
-            .where(
-                Apartment.house_id == house_id,
-                ResidentGrant.user_id == actor.id,
-                ResidentGrant.valid_from <= now,
-                or_(ResidentGrant.valid_to.is_(None), ResidentGrant.valid_to > now),
-                ResidentGrant.revoked_at.is_(None),
-            )
-            .order_by(Apartment.entrance_number, Apartment.apartment_number)
-            .limit(8)
-        )
-    ).all()
-    buttons = [_button("Весь дом", "i:scope:all")]
-    entrances = set()
-    for entrance, apartment in locations:
-        if entrance is not None and entrance not in entrances:
-            buttons.append(
-                _button(f"Подъезд {entrance}", f"i:scope:entrance:{entrance}")
-            )
-            entrances.add(entrance)
-        buttons.append(
-            _button(
-                f"Моя квартира {apartment}",
-                f"i:scope:apartment:{apartment}",
-            )
-        )
-    buttons.extend(
-        [
-            _button("Другая область", "i:scope:custom"),
-            _button("Назад", "i:back"),
-        ]
+    house = await session.get(House, house_id)
+    if house is None or house.archived_at is not None:
+        raise IssueError("house_not_found", "Дом не найден", 404)
+    apartments = await _active_resident_apartments(session, actor, house)
+    if not apartments:
+        raise IssueError("house_access_denied", "Нужен действующий доступ к дому", 403)
+    buttons = [_button("Весь дом", "i:scope:house")]
+    if any(apartment.entrance_number is not None for apartment in apartments.values()):
+        buttons.append(_button("Мой подъезд", "i:scope:entrance"))
+    buttons.append(_button("Моя квартира", "i:scope:apartment"))
+    buttons.append(_button("Назад", "i:back"))
+    note = (
+        " Если ваш подъезд отсутствует, попросите УК указать его в вашей привязке."
+        if all(apartment.entrance_number is None for apartment in apartments.values())
+        else ""
     )
-    return UiReply("Кого касается проблема?", buttons)
+    return UiReply("Где проблема: в вашей квартире, подъезде или во всём доме?" + note, buttons)
+
+
+async def _location_options(
+    session: AsyncSession, actor: User, dialog: BotDialog, scope: str, page: int = 1
+) -> UiReply:
+    house_id = _uuid(str(dialog.data["house_id"]))
+    house = await session.get(House, house_id)
+    if house is None or house.archived_at is not None:
+        raise IssueError("house_not_found", "Дом не найден", 404)
+    apartments = await _active_resident_apartments(session, actor, house)
+    locations: list[tuple[UUID, str]] = []
+    seen_entrances: set[int] = set()
+    for apartment in sorted(apartments.values(), key=lambda item: (item.entrance_number or 0, item.apartment_number)):
+        if scope == "entrance":
+            entrance = apartment.entrance_number
+            if entrance is None or entrance in seen_entrances:
+                continue
+            seen_entrances.add(entrance)
+            locations.append((apartment.id, f"Подъезд {entrance}"))
+        else:
+            locations.append((apartment.id, f"Квартира {apartment.apartment_number}, подъезд {apartment.entrance_number or 'не указан'}"))
+    if not locations:
+        raise IssueError("location_unavailable", "Для этой области нет подтверждённой привязки", 409)
+    if len(locations) == 1:
+        return await _prepare_preview(session, actor, dialog, scope, locations[0][0])
+    selected_page, pages, selected = _page_bounds(len(locations), page, 10)
+    await update_dialog(dialog, step="scope_location", data={**dialog.data, "selected_scope": scope})
+    buttons = [_button(label, f"i:loc:{apartment_id}") for apartment_id, label in locations[selected]]
+    navigation = []
+    if selected_page > 1:
+        navigation.append(Button("← Назад", f"i:loc_page:{selected_page - 1}"))
+    if selected_page < pages:
+        navigation.append(Button("Далее →", f"i:loc_page:{selected_page + 1}"))
+    if navigation:
+        buttons.append(navigation)
+    buttons.append(_button("К выбору области", "i:back"))
+    return UiReply(f"Выберите свою локацию · страница {selected_page}/{pages}:", buttons)
 
 
 async def _prepare_preview(
-    session: AsyncSession, actor: User, dialog: BotDialog, scope: str
+    session: AsyncSession, actor: User, dialog: BotDialog, scope: str,
+    apartment_id: UUID | None = None,
 ) -> UiReply:
-    all_house, entrances, apartments = _scope(scope)
     data = dict(dialog.data)
     house_id = _uuid(str(data["house_id"]))
+    house = await session.get(House, house_id)
+    if house is None or house.archived_at is not None:
+        raise IssueError("house_not_found", "Дом не найден", 404)
+    apartments = await _active_resident_apartments(session, actor, house)
+    if not apartments:
+        raise IssueError("house_access_denied", "Нужен действующий доступ к дому", 403)
+    if scope not in {"house", "entrance", "apartment"} or (scope == "house" and apartment_id is not None):
+        raise IssueError("invalid_scope", "Выберите свою квартиру, подъезд или весь дом")
+    selected_apartment = None
+    if scope != "house":
+        if apartment_id is None and len(apartments) == 1:
+            apartment_id = next(iter(apartments))
+        selected_apartment = apartments.get(apartment_id)
+        if selected_apartment is None:
+            raise IssueError("apartment_access_denied", "Выберите свою подтверждённую квартиру", 403)
+        if scope == "entrance" and selected_apartment.entrance_number is None:
+            raise IssueError("entrance_unknown", "Уточните подъезд через УК", 409)
     category_id = _uuid(str(data["category_id"]))
     description = str(data["description"])
     suggestion = await suggest_issue(
@@ -487,8 +523,20 @@ async def _prepare_preview(
         house_id=house_id,
         description=description,
         category_id=category_id,
+        scope=scope,
+        apartment_id=apartment_id,
     )
     data["scope"] = scope
+    if apartment_id is None:
+        data.pop("apartment_id", None)
+    else:
+        data["apartment_id"] = str(apartment_id)
+    data["scope_label"] = (
+        "весь дом" if scope == "house" else
+        f"подъезд {selected_apartment.entrance_number}" if scope == "entrance" else
+        f"квартира {selected_apartment.apartment_number}"
+    )
+    data.pop("selected_scope", None)
     data["suggestions"] = [
         {"id": str(item.id), "title": item.title}
         for item in suggestion.candidates
@@ -509,12 +557,8 @@ async def _prepare_preview(
     payload = {
         "house_id": str(house_id),
         "category_id": str(category_id),
-        "scope_all_house": all_house,
-        "target_entrances": entrances,
-        "target_apartments": [
-            {"apartment_number": apartment}
-            for _, apartment in apartments
-        ],
+        "scope": scope,
+        **({"apartment_id": str(apartment_id)} if apartment_id is not None else {}),
         "title": title,
         "description": description,
         "summary_description": summary,
@@ -539,8 +583,7 @@ async def _prepare_preview(
 
 def _preview(dialog: BotDialog) -> UiReply:
     data = dialog.data
-    scope = data.get("scope")
-    scope_text = _scope_label(*_scope(str(scope))) if scope else "не указана"
+    scope_text = str(data.get("scope_label") or {"house": "весь дом"}.get(data.get("scope"), "не указана"))
     lines = [
         "Проверьте обращение:",
         f"Название: {data.get('title', '—')}",
@@ -609,7 +652,7 @@ async def _resume(session: AsyncSession, actor: User, draft_id: UUID) -> UiReply
     if draft.flow_kind != "issue_card" or draft.submitted_at is not None:
         raise ValueError("Этот черновик проблемы уже отправлен или недоступен")
     payload = draft.payload
-    required = {"house_id", "category_id", "title", "description", "scope_all_house"}
+    required = {"house_id", "category_id", "description"}
     if not required.issubset(payload):
         return UiReply(
             "Этот черновик заполнен не полностью. Дополните его в мини-приложении "
@@ -618,74 +661,35 @@ async def _resume(session: AsyncSession, actor: User, draft_id: UUID) -> UiReply
         )
     house_id = _uuid(str(payload["house_id"]))
     await list_visible_cards(session, actor, house_id)
-    if payload.get("scope_all_house"):
-        scope = "all"
-    else:
-        entrances = payload.get("target_entrances") or []
-        apartments = payload.get("target_apartments") or []
-        sections = []
-        if entrances:
-            sections.append("e:" + ",".join(map(str, entrances)))
-        if apartments:
-            sections.append(
-                "a:"
-                + ",".join(
-                    str(item["apartment_number"])
-                    for item in apartments
-                )
-            )
-        scope = "+".join(sections)
-        _scope(scope)
-    suggestion = await suggest_issue(
-        session,
-        actor,
-        house_id=house_id,
-        description=str(payload["description"]),
-        category_id=_uuid(str(payload["category_id"])),
-    )
-    stored_summary = _summary_text(payload.get("summary_description"))
-    suggested_summary = _summary_text(getattr(suggestion, "summary_description", None))
-    summary = stored_summary or suggested_summary or str(payload["description"])
-    fallback = suggested_summary is None and stored_summary in {
-        None,
-        _summary_text(payload["description"]),
-    }
-    if stored_summary is None:
-        draft = await save_draft(
-            session,
-            actor,
-            flow_kind="issue_card",
-            payload={**payload, "summary_description": summary},
-            draft_id=draft.id,
-            revision=draft.revision,
-        )
     data = {
         "house_id": str(house_id),
         "category_id": str(payload["category_id"]),
         "description": str(payload["description"]),
-        "summary_description": summary,
-        "_summary_fallback": fallback,
-        "title": str(payload["title"]),
-        "scope": scope,
+        **({"summary_description": payload["summary_description"]} if payload.get("summary_description") else {}),
+        **({"title": payload["title"]} if payload.get("title") else {}),
         "draft_revision": draft.revision,
-        "suggestions": [
-            {"id": str(item.id), "title": item.title}
-            for item in suggestion.candidates
-            if item.id in suggestion.similar_card_ids
-        ],
-        "suggestion_source": suggestion.source,
-        "description_check": suggestion.description_check,
-        "description_warning": suggestion.description_warning,
     }
     dialog = await set_dialog(
         session,
         actor.id,
         flow_kind="issue_new",
-        step="review",
+        step="scope",
         data=data,
         draft_id=draft.id,
     )
-    return _preview(dialog)
+    scope = payload.get("scope")
+    if scope not in {"house", "entrance", "apartment"}:
+        return await _scope_options(session, actor, dialog)
+    try:
+        apartment_id = _uuid(str(payload["apartment_id"])) if payload.get("apartment_id") else None
+    except ValueError:
+        return await _scope_options(session, actor, dialog)
+    try:
+        return await _prepare_preview(session, actor, dialog, str(scope), apartment_id)
+    except IssueError as error:
+        if error.code not in {"apartment_access_denied", "entrance_unknown"}:
+            raise
+        return await _scope_options(session, actor, dialog)
 
 
 async def _status_menu(session: AsyncSession, actor: User, card_id: UUID) -> UiReply:
@@ -743,6 +747,32 @@ async def _merge_menu(session: AsyncSession, actor: User, card_id: UUID) -> UiRe
     )
 
 
+async def _merge_suggestions(session: AsyncSession, actor: User, card_id: UUID) -> UiReply:
+    result, candidates = await _staff_merge_candidates(session, actor, card_id)
+    await set_dialog(
+        session,
+        actor.id,
+        flow_kind="issue_merge",
+        step="pick",
+        data={"card_id": str(card_id)},
+    )
+    source = "GigaChat" if result.source == "gigachat" else "локальный поиск без нейросети"
+    buttons = [
+        _button(card.title[:55], f"i:merge_with:{card.id}")
+        for card in candidates
+    ]
+    buttons.extend([
+        _button("Все открытые карточки", f"i:merge:{card_id}"),
+        _button("Назад", "i:back"),
+    ])
+    message = (
+        "Выберите подходящую карточку и подтвердите объединение вручную."
+        if candidates
+        else "Похожих открытых карточек не найдено."
+    )
+    return UiReply(f"Похожие карточки ({source}). {message}", buttons)
+
+
 async def _back(session: AsyncSession, actor: User) -> UiReply:
     dialog = await get_dialog(session, actor.id)
     if dialog is None:
@@ -760,7 +790,7 @@ async def _back(session: AsyncSession, actor: User) -> UiReply:
             return await _categories(
                 session, actor, _uuid(str(dialog.data["house_id"]))
             )
-        if dialog.step == "scope_custom":
+        if dialog.step == "scope_location":
             await update_dialog(dialog, step="scope")
             return await _scope_options(session, actor, dialog)
         if dialog.step == "scope":
@@ -862,33 +892,32 @@ async def _handle_action(session: AsyncSession, actor: User, payload: str) -> Ui
             "Опишите проблему одним сообщением (до 1500 символов):",
             [_button("Назад", "i:back")],
         )
-    if payload == "i:scope:custom":
-        dialog = await _dialog(session, actor, "issue_new", "scope")
-        if dialog is None:
-            return _stale()
-        await update_dialog(dialog, step="scope_custom")
-        return UiReply(
-            "Укажите область: `all` — весь дом, `e:1,2` — подъезды, "
-            "`a:12,18` — квартиры, `e:1+a:18` — вместе.",
-            [_button("Назад", "i:back")],
-        )
     if payload.startswith("i:scope:"):
         dialog = await _dialog(session, actor, "issue_new", "scope")
         if dialog is None:
             return _stale()
-        parts = payload.split(":")
-        if parts == ["i", "scope", "all"]:
-            scope = "all"
-        elif len(parts) == 4 and parts[2] == "entrance":
-            scope = f"e:{int(parts[3])}"
-        elif len(parts) == 4 and parts[2] == "apartment":
-            scope = f"a:{int(parts[3])}"
-        elif len(parts) == 5 and parts[2] == "apartment":
-            # Older MAX messages may still contain an entrance in the callback.
-            scope = f"a:{int(parts[4])}"
-        else:
-            raise ValueError("Неверная область проблемы")
-        return await _prepare_preview(session, actor, dialog, scope)
+        scope = payload.removeprefix("i:scope:")
+        if scope in {"house", "all"}:
+            return await _prepare_preview(session, actor, dialog, "house")
+        if scope in {"entrance", "apartment"}:
+            return await _location_options(session, actor, dialog, scope)
+        return _stale()
+    if payload.startswith("i:loc_page:"):
+        dialog = await _dialog(session, actor, "issue_new", "scope_location")
+        if dialog is None:
+            return _stale()
+        return await _location_options(
+            session, actor, dialog, str(dialog.data["selected_scope"]),
+            _page_number(payload.removeprefix("i:loc_page:")),
+        )
+    if payload.startswith("i:loc:"):
+        dialog = await _dialog(session, actor, "issue_new", "scope_location")
+        if dialog is None:
+            return _stale()
+        return await _prepare_preview(
+            session, actor, dialog, str(dialog.data["selected_scope"]),
+            _uuid(payload.removeprefix("i:loc:")),
+        )
     if payload == "i:issue:preview":
         dialog = await _dialog(session, actor, "issue_new", "review", "attachments")
         return _preview(dialog) if dialog else _stale()
@@ -1090,6 +1119,10 @@ async def _handle_action(session: AsyncSession, actor: User, payload: str) -> Ui
             f"Текущее название: {card.title}\nНапишите новое название:",
             [_button("Назад", "i:back")],
         )
+    if payload.startswith("i:merge_suggest:"):
+        return await _merge_suggestions(
+            session, actor, _uuid(payload.removeprefix("i:merge_suggest:"))
+        )
     if payload.startswith("i:merge:"):
         return await _merge_menu(
             session, actor, _uuid(payload.removeprefix("i:merge:"))
@@ -1101,6 +1134,8 @@ async def _handle_action(session: AsyncSession, actor: User, payload: str) -> Ui
         left = await get_visible_card(
             session, actor, _uuid(str(dialog.data["card_id"]))
         )
+        if not await _staff_can_manage(session, actor, left.house_id):
+            raise IssueError("issue_permission_denied", "Нет права объединять карточки", 403)
         right = await get_visible_card(
             session, actor, _uuid(payload.removeprefix("i:merge_with:"))
         )
@@ -1116,7 +1151,10 @@ async def _handle_action(session: AsyncSession, actor: User, payload: str) -> Ui
         data["other_id"] = str(right.id)
         await update_dialog(dialog, step="confirm", data=data)
         return UiReply(
-            f"Объединить «{left.title}» и «{right.title}»? Это изменит обе карточки.",
+            f"Объединить «{left.title}» и «{right.title}»?\n"
+            f"Первая: {left.summary_description[:250]}\n"
+            f"Вторая: {right.summary_description[:250]}\n"
+            "Проверьте, что это одна и та же проблема. Это изменит обе карточки.",
             [
                 _button("Подтвердить объединение", "i:merge_confirm"),
                 _button("Назад", "i:back"),
@@ -1185,9 +1223,11 @@ async def _handle_text(
             await update_dialog(dialog, step="scope", data=data)
             return await _scope_options(session, actor, dialog)
         if dialog.step == "scope":
-            return await _prepare_preview(session, actor, dialog, text.strip())
-        if dialog.step == "scope_custom":
-            return await _prepare_preview(session, actor, dialog, text.strip())
+            return await _scope_options(session, actor, dialog)
+        if dialog.step == "scope_location":
+            return await _location_options(
+                session, actor, dialog, str(dialog.data["selected_scope"])
+            )
         if dialog.step == "edit_title":
             title = " ".join(text.split())
             if not 1 <= len(title) <= 100:

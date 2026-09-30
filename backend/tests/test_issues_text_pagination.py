@@ -39,7 +39,7 @@ class IssueTextPaginationTests(unittest.IsolatedAsyncioTestCase):
             issues_text, "suggest_issue", new=AsyncMock(return_value=suggestion)
         ):
             reply = await issues_text.handle_issue_text(
-                self.session, self.actor, f"/suggest {house_id} | - | Лифт сломан"
+                self.session, self.actor, f"/suggest {house_id} | - | дом | Лифт сломан"
             )
         self.assertIn("GigaChat обработал описание", reply)
         self.assertIn("Лифт в доме не реагирует на вызов", reply)

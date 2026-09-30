@@ -26,6 +26,8 @@ async def suggest(
             house_id=body.house_id,
             description=body.description,
             category_id=body.category_id,
+            scope=body.scope,
+            apartment_id=body.apartment_id,
         )
     except IssueError as error:
         raise_http_issue(error)

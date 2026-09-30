@@ -15,11 +15,19 @@ responses:
 schemas:
   Request:
     type: object
-    required: [house_id, description]
+    required: [house_id, description, scope]
     properties:
       house_id: {type: string, format: uuid}
       category_id: {type: string, format: uuid}
       description: {type: string, minLength: 1, maxLength: 1500}
+      scope:
+        type: string
+        enum: [apartment, entrance, house]
+        description: Область новой проблемы. Похожие приватные карточки ищутся только в выбранной квартире.
+      apartment_id:
+        type: string
+        format: uuid
+        description: Выбранная подтверждённая квартира; требуется при нескольких действующих привязках для области квартиры или подъезда.
   Candidate:
     type: object
     required: [id, title]

@@ -17,7 +17,7 @@ responses:
 schemas:
   Request:
     type: object
-    required: [request_id, apartment_number]
+    required: [request_id, entrance_number, apartment_number]
     properties:
       request_id:
         type: string

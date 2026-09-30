@@ -918,6 +918,28 @@ paths:
       operationId: issues_suggest
       tags:
       - issues
+  /issues/suggest_merge:
+    post:
+      summary: Предложить сотруднику УК похожие активные проблемы для объединения
+      description: Доступно сотруднику этой УК с правом управления проблемами. Ищет
+        по всему дому, включая карточки других квартир. Карточки автоматически не
+        объединяются.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/gen.issues.api.suggest_merge.Request'
+      responses:
+        '200':
+          description: Список возможных совпадений, доступный только сотруднику УК.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.issues.api.suggest_merge.Response200'
+      operationId: issues_suggest_merge
+      tags:
+      - issues
   /issues/support_card:
     post:
       summary: Поддержать существующую проблему
@@ -1449,6 +1471,7 @@ components:
       type: object
       required:
       - house_id
+      - entrance_number
       - apartment_number
       - phone_number
       properties:
@@ -1485,6 +1508,7 @@ components:
       type: object
       required:
       - house_id
+      - entrance_number
       - apartment_number
       properties:
         house_id:
@@ -2102,6 +2126,7 @@ components:
       type: object
       required:
       - request_id
+      - entrance_number
       - apartment_number
       properties:
         request_id:
@@ -2316,17 +2341,6 @@ components:
       properties:
         message:
           $ref: '#/components/schemas/gen.issues.internal.issue_data.Message'
-    gen.issues.api.create_card.TargetApartment:
-      type: object
-      required:
-      - apartment_number
-      properties:
-        entrance_number:
-          type: integer
-          minimum: 1
-        apartment_number:
-          type: integer
-          minimum: 1
     gen.issues.api.create_card.Request:
       type: object
       required:
@@ -2334,7 +2348,7 @@ components:
       - category_id
       - title
       - description
-      - scope_all_house
+      - scope
       properties:
         house_id:
           type: string
@@ -2354,17 +2368,19 @@ components:
           maxLength: 1500
           description: Сводное описание общей карточки. Если отсутствует, берётся
             исходное описание жителя.
-        scope_all_house:
-          type: boolean
-        target_entrances:
-          type: array
-          items:
-            type: integer
-            minimum: 1
-        target_apartments:
-          type: array
-          items:
-            $ref: '#/components/schemas/gen.issues.api.create_card.TargetApartment'
+        scope:
+          type: string
+          enum:
+          - apartment
+          - entrance
+          - house
+          description: Область проблемы. Квартира и подъезд определяются сервером
+            по действующему доступу жителя.
+        apartment_id:
+          type: string
+          format: uuid
+          description: Нужен только при нескольких действующих квартирах в доме; значение
+            берётся из /access/list_grants.
     gen.issues.api.create_card.Response201:
       type: object
       required:
@@ -2578,6 +2594,7 @@ components:
       required:
       - house_id
       - description
+      - scope
       properties:
         house_id:
           type: string
@@ -2589,6 +2606,19 @@ components:
           type: string
           minLength: 1
           maxLength: 1500
+        scope:
+          type: string
+          enum:
+          - apartment
+          - entrance
+          - house
+          description: Область новой проблемы. Похожие приватные карточки ищутся только
+            в выбранной квартире.
+        apartment_id:
+          type: string
+          format: uuid
+          description: Выбранная подтверждённая квартира; требуется при нескольких
+            действующих привязках для области квартиры или подъезда.
     gen.issues.api.suggest.Candidate:
       type: object
       required:
@@ -2646,6 +2676,30 @@ components:
           - string
           - 'null'
           description: Короткое необязательное уточнение от ИИ; null при ok и not_checked.
+    gen.issues.api.suggest_merge.Request:
+      type: object
+      required:
+      - card_id
+      properties:
+        card_id:
+          type: string
+          format: uuid
+    gen.issues.api.suggest_merge.Response200:
+      type: object
+      required:
+      - similar_card_ids
+      - source
+      properties:
+        similar_card_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        source:
+          type: string
+          enum:
+          - gigachat
+          - local
     gen.issues.api.support_card.Request:
       type: object
       required:
