@@ -159,6 +159,18 @@ class IssueSuggestionRulesTests(unittest.TestCase):
             _validate_provider_payload(valid | {"summary_description": " "}, set())
         )
         self.assertIsNone(
+            _validate_provider_payload(valid | {"summary_description": "п"}, set())
+        )
+        self.assertIsNone(
+            _validate_provider_payload(valid | {"title": "п"}, set())
+        )
+        self.assertIsNone(
+            _validate_provider_payload(valid | {"summary_description": "Протечка"}, set())
+        )
+        self.assertIsNotNone(
+            _validate_provider_payload(valid | {"summary_description": "Нет света."}, set())
+        )
+        self.assertIsNone(
             _validate_provider_payload(
                 valid | {"summary_description": "x" * 501}, set()
             )

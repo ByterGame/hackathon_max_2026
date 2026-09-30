@@ -1001,6 +1001,19 @@ paths:
       operationId: notifications_list
       tags:
       - notifications
+  /notifications/mark_all_read:
+    post:
+      summary: Отметить все мои уведомления прочитанными
+      responses:
+        '200':
+          description: Все непрочитанные уведомления пользователя отмечены прочитанными.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/gen.notifications.api.mark_all_read.Response200'
+      operationId: notifications_mark_all_read
+      tags:
+      - notifications
   /notifications/mark_read:
     post:
       summary: Отметить уведомление прочитанным
@@ -2450,6 +2463,7 @@ components:
       - reports
       - messages
       - history
+      - supporters
       properties:
         card:
           $ref: '#/components/schemas/gen.issues.internal.issue_data.Card'
@@ -2469,6 +2483,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/gen.issues.internal.issue_data.HistoryEvent'
+        supporters:
+          type: array
+          description: Состав поддержавших виден только сотрудникам УК и администратору;
+            жильцам возвращается пустой список.
+          items:
+            $ref: '#/components/schemas/gen.issues.api.get_card.Supporter'
+    gen.issues.api.get_card.Supporter:
+      type: object
+      required:
+      - user_id
+      - display_name
+      - supported_at
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        display_name:
+          type: string
+        phone_number:
+          type: string
+        supported_at:
+          type: string
+          format: date-time
     gen.issues.api.get_card.QueryParams:
       type: object
       properties:
@@ -2777,6 +2814,14 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/gen.notifications.api.list.Item'
+    gen.notifications.api.mark_all_read.Response200:
+      type: object
+      required:
+      - marked
+      properties:
+        marked:
+          type: integer
+          minimum: 0
     gen.notifications.api.mark_read.Request:
       type: object
       required:

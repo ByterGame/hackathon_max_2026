@@ -78,6 +78,15 @@ async def assign_staff(
         )
         .with_for_update()
     )
+    if actor.kind == "employee" and (
+        (matching_user is not None and matching_user.id == actor.id)
+        or (assignment is not None and assignment.user_id == actor.id)
+    ):
+        raise AccessRuleError(
+            403,
+            "self_staff_change_forbidden",
+            "Изменять свои права сотрудника нельзя. Попросите другого сотрудника УК.",
+        )
     if assignment is None:
         assignment = StaffAssignment(
             id=uuid4(),
@@ -153,30 +162,15 @@ async def revoke_staff(
         )
     if assignment.revoked_at is not None:
         raise AccessRuleError(409, "already_revoked", "Доступ сотрудника уже отозван")
-    if actor.kind == "employee" and assignment.user_id == actor.id:
-        # Serialize self-revocations in one company: two employees must not
-        # both see the other as active and revoke themselves concurrently.
-        await require_row(session, Company, assignment.company_id, for_update=True)
-        remaining_staff = await session.scalar(
-            select(StaffAssignment.id)
-            .join(User, User.id == StaffAssignment.user_id)
-            .where(
-                StaffAssignment.company_id == assignment.company_id,
-                StaffAssignment.id != assignment.id,
-                StaffAssignment.revoked_at.is_(None),
-                User.id != actor.id,
-                User.kind == "employee",
-                User.phone_verified_at.is_not(None),
-            )
-            .limit(1)
+    if actor.kind == "employee" and (
+        assignment.user_id == actor.id
+        or (employee is not None and employee.id == actor.id)
+    ):
+        raise AccessRuleError(
+            403,
+            "self_staff_change_forbidden",
+            "Отзывать своё назначение нельзя. Попросите другого сотрудника УК.",
         )
-        if remaining_staff is None:
-            raise AccessRuleError(
-                409,
-                "last_staff_self_revoke",
-                "Последний сотрудник УК не может отозвать свой доступ. "
-                "Сначала назначьте другого сотрудника или обратитесь к администратору.",
-            )
     now = utcnow()
     assignment.revoked_at = now
     assignment.version += 1

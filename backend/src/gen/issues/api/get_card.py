@@ -2,9 +2,20 @@
 
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import AwareDatetime, BaseModel, Field
 
 from src.gen.issues.internal.issue_data import Card, HistoryEvent, Message, Report, Target
+
+
+class Supporter(BaseModel):
+    user_id: UUID
+    display_name: str
+    phone_number: str | None = None
+    supported_at: AwareDatetime
+
+
+class QueryParams(BaseModel):
+    card_id: UUID
 
 
 class Response200(BaseModel):
@@ -13,7 +24,7 @@ class Response200(BaseModel):
     reports: list[Report]
     messages: list[Message]
     history: list[HistoryEvent]
-
-
-class QueryParams(BaseModel):
-    card_id: UUID
+    supporters: list[Supporter] = Field(
+        ...,
+        description='Состав поддержавших виден только сотрудникам УК и администратору; жильцам возвращается пустой список.',
+    )

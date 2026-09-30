@@ -62,7 +62,7 @@ export function ResidentHome({ view, houses, issues, grants, requests, companyRe
       <header className="resident-home__web-header">
         <div className="resident-home__web-header-inner">
           <button type="button" className="resident-home__web-brand" onClick={onHome} aria-label="На главную">
-            <img src={brandMark} alt="" width="40" height="40" /><strong>СвойДом</strong>
+            <img src={brandMark} alt="" width="52" height="52" /><strong>СвойДом</strong>
           </button>
           <div className="resident-home__web-actions">
             <button type="button" className="resident-home__web-address" onClick={onHome} title="Выбрать дом">{house?.address ?? "Мои дома"} · Житель</button>
@@ -82,11 +82,15 @@ export function ResidentHome({ view, houses, issues, grants, requests, companyRe
                 .filter((entry) => entry.houseId === id)
                 .map((entry) => formatApartmentLocation(entry.apartment, entry.entrance).replace(", ", " · "));
               const selected = house?.id === id;
-              return <button key={id} type="button" className={`panel my-house-card${selected ? " my-house-card--selected" : ""}`} aria-pressed={selected} onClick={() => onSelectHouse(id)}>
+              const content = <>
                 <strong className="my-house-card__address">{item?.address ?? "Дом без адреса"}</strong>
                 <span className="my-house-card__location">{locations.join("; ")}</span>
-                <span className="my-house-card__state">Выбрать</span>
-              </button>;
+                {myHouseIds.length > 1 && <span className="my-house-card__state" aria-hidden="true"><Icon name={selected ? "check" : "chevron"} size={20} /></span>}
+              </>;
+              const className = `panel my-house-card${selected ? " my-house-card--selected" : ""}`;
+              return myHouseIds.length > 1
+                ? <button key={id} type="button" className={className} aria-label={`${item?.address ?? "Дом без адреса"}: ${selected ? "текущий дом" : "переключиться на этот дом"}`} aria-pressed={selected} onClick={() => onSelectHouse(id)}>{content}</button>
+                : <div key={id} className={className}>{content}</div>;
             })}</div>
           </section>
           <section className="resident-home__recent" aria-labelledby="recent-issues-title">

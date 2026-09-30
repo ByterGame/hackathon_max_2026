@@ -14,7 +14,9 @@ from .http_logging import HTTPLoggingMiddleware
 from .views import router
 from .views.admin import router as admin_router
 from .views.admin import system_router
+from .views.access.test_registration import router as test_registration_router
 from .views.files import router as files_router
+from .views.service.config import router as service_config_router
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 MINIAPP_DIST = REPOSITORY_ROOT / "miniapp" / "dist"
@@ -71,6 +73,8 @@ def create_app() -> FastAPI:
     app.include_router(admin_router)
     app.include_router(system_router)
     app.include_router(files_router)
+    app.include_router(test_registration_router)
+    app.include_router(service_config_router)
 
     if MINIAPP_DIST.is_dir():
         app.mount("/", StaticFiles(directory=MINIAPP_DIST, html=True), name="miniapp")

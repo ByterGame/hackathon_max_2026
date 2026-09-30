@@ -1,6 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { getCurrentUser } from "../features/auth/integrations/client_api";
+import { PrivateAttachmentPreview } from "../features/files/AttachmentPreview";
+import { MAX_FILE_BYTES, MAX_FILE_SIZE_LABEL, SUPPORTED_FILE_FORMATS } from "../features/files/file_rules";
+import { listFiles, uploadParentFile, type PrivateFile } from "../features/files/integrations/client_api";
 import {
   accessRequestStatusLabels,
   addAccessDiscussionMessage,
@@ -23,10 +26,23 @@ import { demoResident, formatApartmentLocation, formatDate, formatHouseCounts, t
 import { Icon } from "../shared/common_ui/Icon";
 import { ScreenHeader } from "../shared/common_ui/ScreenHeader";
 import { HttpError } from "../shared/base_http_client";
+import { CancelResidentRequestControl } from "./CancelResidentRequestControl";
+import "./access-flows.css";
 
 type Tab = "residents" | "staff" | "houses";
 const noRights: StaffRights = { manageStaff: false, manageResidents: false, manageIssues: false };
 const PAGE_SIZE = 20;
+type AccessDuration = "permanent" | "temporary";
+
+function validFutureDate(value: string): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) || date.getTime() <= Date.now() ? null : date.toISOString();
+}
+
+function AccessDurationFields({ id, duration, onDuration, until, onUntil }: { id: string; duration: AccessDuration; onDuration: (value: AccessDuration) => void; until: string; onUntil: (value: string) => void }) {
+  return <div className="access-duration"><span>Срок доступа</span><div className="access-duration__choices"><label><input type="radio" name={`${id}-duration`} checked={duration === "permanent"} onChange={() => onDuration("permanent")} /> Постоянный</label><label><input type="radio" name={`${id}-duration`} checked={duration === "temporary"} onChange={() => onDuration("temporary")} /> Временный</label></div>{duration === "temporary" && <><label className="field"><span>Доступ до</span><input type="datetime-local" required value={until} onChange={(event) => onUntil(event.target.value)} /></label><p className="field-help">Укажите будущую дату и время в вашем часовом поясе.</p></>}</div>;
+}
 
 function residentRequestFromPage(item: AccessRequestDetail): ResidentRequest {
   return {
@@ -87,6 +103,9 @@ export function AccessCasePanel({ kind, id, perspective, canManage = false, onCh
   const [fullName, setFullName] = useState("");
   const [entrance, setEntrance] = useState("");
   const [apartment, setApartment] = useState("");
+  const [files, setFiles] = useState<PrivateFile[]>([]);
+  const [filesBusy, setFilesBusy] = useState(false);
+  const [filesError, setFilesError] = useState("");
 
   useEffect(() => {
     if (isDemoMode) return;
@@ -104,6 +123,33 @@ export function AccessCasePanel({ kind, id, perspective, canManage = false, onCh
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [kind, id]);
+
+  useEffect(() => {
+    if (isDemoMode || kind !== "resident") return;
+    let active = true;
+    void listFiles("resident", id)
+      .then((items) => { if (active) setFiles(items); })
+      .catch((reason) => { if (active) setFilesError(reason instanceof Error ? reason.message : "Не удалось загрузить вложения"); });
+    return () => { active = false; };
+  }, [kind, id]);
+
+  async function uploadFiles(event: React.ChangeEvent<HTMLInputElement>) {
+    const selected = [...(event.target.files ?? [])];
+    event.target.value = "";
+    if (!selected.length) return;
+    if (selected.some((file) => file.size > MAX_FILE_BYTES)) { setFilesError(`Каждый файл должен быть не больше ${MAX_FILE_SIZE_LABEL}`); return; }
+    const allowed = new Set(["image/jpeg", "image/png", "image/webp", "application/pdf", "video/mp4", "video/quicktime"]);
+    if (selected.some((file) => !allowed.has(file.type))) { setFilesError(`Допустимые форматы: ${SUPPORTED_FILE_FORMATS}`); return; }
+    setFilesBusy(true); setFilesError(""); setNotice("");
+    try {
+      for (const file of selected) await uploadParentFile(file, "resident", id);
+      setFiles(await listFiles("resident", id));
+      setNotice(selected.length === 1 ? "Вложение добавлено" : "Вложения добавлены");
+    } catch (reason) {
+      setFilesError(reason instanceof Error ? reason.message : "Не удалось добавить вложение. Уже загруженные файлы можно увидеть после обновления заявки.");
+      void listFiles("resident", id).then(setFiles).catch(() => {});
+    } finally { setFilesBusy(false); }
+  }
 
   async function run(action: () => Promise<unknown>, success: string, after?: () => void) {
     setBusy(true); setError(""); setNotice("");
@@ -137,22 +183,26 @@ export function AccessCasePanel({ kind, id, perspective, canManage = false, onCh
   );
   const canRequestCancellation = active && canWrite && !detail.cancel_requested_by;
 
-  return <div className="decision-box">
+  return <div className="decision-box access-case-panel">
     <h3>Заявка и обсуждение</h3>
     <p className="section-description">{accessRequestStatusLabels[detail.status]}{detail.outcome && ` · ${detail.outcome === "granted" || detail.outcome === "approved" ? "одобрено" : "отказано"}`}</p>
     {kind === "house_addition" && <p>{formatHouseCounts(detail.entrance_count, detail.apartment_count)}</p>}
     {detail.decision_note && <p>Пояснение к решению: {detail.decision_note}</p>}
     {detail.cancel_requested_by && <div className="info-panel"><Icon name="info" size={20} /> {canResolveCancellation ? "Другая сторона просит отменить заявку. Подтвердите отмену или оставьте заявку в работе." : detail.cancel_requested_by === actorId ? "Вы запросили отмену. Ждём ответа другой стороны." : "Запрошена отмена заявки."}</div>}
     {canResolveCancellation && <div className="button-row"><button type="button" className="button button--soft" disabled={busy} onClick={() => void run(() => resolveAccessCancellation(kind, id, false), "Отмена отклонена")}>Оставить заявку</button><button type="button" className="button button--primary" disabled={busy} onClick={() => void run(() => resolveAccessCancellation(kind, id, true), "Заявка отменена")}>Подтвердить отмену</button></div>}
-    {canRequestCancellation && <button type="button" className="button button--soft" disabled={busy} onClick={() => void run(() => requestAccessCancellation(kind, id), detail.status === "open" && kind === "resident" && perspective === "applicant" ? "Заявка отменена" : "Запрос на отмену отправлен")}>{detail.status === "open" && kind === "resident" && perspective === "applicant" ? "Отменить заявку" : "Запросить отмену"}</button>}
+    {canRequestCancellation && (kind === "resident" && perspective === "applicant" && detail.status === "open"
+      ? <CancelResidentRequestControl id={id} onChanged={async () => { setDetail(await getAccessRequest(kind, id)); await onChanged(); }} />
+      : <button type="button" className="button button--soft" disabled={busy} onClick={() => void run(() => requestAccessCancellation(kind, id), "Запрос на отмену отправлен")}>Запросить отмену</button>)}
 
     {kind === "resident" && perspective === "staff" && canManage && active && <div className="form-stack"><label className="field"><span>Рабочий статус</span><select value={statusChoice} onChange={(event) => setStatusChoice(event.target.value as "open" | "reviewing" | "needs_info")}><option value="open">Открыта</option><option value="reviewing">На рассмотрении</option><option value="needs_info">Нужны уточнения</option></select></label><button type="button" className="button button--soft" disabled={busy || statusChoice === detail.status} onClick={() => void run(() => changeAccessRequestStatus(kind, id, statusChoice), "Статус сохранён")}>Сохранить статус</button></div>}
 
-    {kind === "resident" && perspective === "applicant" && active && <div>{editing ? <form className="form-stack" onSubmit={(event) => { event.preventDefault(); void run(() => updateResidentAccessRequest(id, fullName, Number(entrance), Number(apartment)), "Данные заявки исправлены", () => setEditing(false)); }}><label className="field"><span>ФИО</span><input required value={fullName} onChange={(event) => setFullName(event.target.value)} /></label><div className="field-grid"><label className="field"><span>Подъезд</span><input required type="number" min="1" value={entrance} onChange={(event) => setEntrance(event.target.value)} /></label><label className="field"><span>Квартира</span><input required type="number" min="1" value={apartment} onChange={(event) => setApartment(event.target.value)} /></label></div><div className="button-row"><button type="button" className="button button--soft" onClick={() => setEditing(false)}>Не менять</button><button type="submit" className="button button--primary" disabled={busy || !fullName.trim() || !Number.isInteger(Number(entrance)) || Number(entrance) < 1 || !Number.isInteger(Number(apartment)) || Number(apartment) < 1}>Сохранить</button></div></form> : <button type="button" className="button button--soft" disabled={busy} onClick={() => setEditing(true)}>Исправить ФИО, подъезд или квартиру</button>}</div>}
+    {kind === "resident" && perspective === "applicant" && active && <div className="access-case-panel__edit">{editing ? <form className="form-stack" onSubmit={(event) => { event.preventDefault(); void run(() => updateResidentAccessRequest(id, fullName, Number(entrance), Number(apartment)), "Данные заявки исправлены", () => setEditing(false)); }}><label className="field"><span>ФИО</span><input required value={fullName} onChange={(event) => setFullName(event.target.value)} /></label><div className="field-grid"><label className="field"><span>Подъезд</span><input required type="number" min="1" value={entrance} onChange={(event) => setEntrance(event.target.value)} /></label><label className="field"><span>Квартира</span><input required type="number" min="1" value={apartment} onChange={(event) => setApartment(event.target.value)} /></label></div><div className="button-row"><button type="button" className="button button--soft" onClick={() => setEditing(false)}>Не менять</button><button type="submit" className="button button--primary" disabled={busy || !fullName.trim() || !Number.isInteger(Number(entrance)) || Number(entrance) < 1 || !Number.isInteger(Number(apartment)) || Number(apartment) < 1}>Сохранить</button></div></form> : <button type="button" className="button button--soft" disabled={busy} onClick={() => setEditing(true)}>Исправить ФИО, подъезд или квартиру</button>}</div>}
+
+    {kind === "resident" && <section className="access-case-panel__attachments"><h4>Вложения к заявке</h4>{files.length > 0 ? <div className="attachment-list">{files.map((file) => <PrivateAttachmentPreview key={file.id} file={file} />)}</div> : <p className="field-help">Пока нет вложений.</p>}{active && canWrite && <label className="access-case-panel__upload"><span>Добавить фото, видео или документ</span><input type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf,video/mp4,video/quicktime" disabled={filesBusy} onChange={(event) => void uploadFiles(event)} /><small>{SUPPORTED_FILE_FORMATS} · до {MAX_FILE_SIZE_LABEL} на файл</small></label>}{filesError && <p className="form-error" role="alert">{filesError}</p>}</section>}
 
     <div className="section-heading"><h3>Обсуждение</h3><span className="count-badge">{detail.discussion.length}</span></div>
     <div className="message-list">{detail.discussion.length ? detail.discussion.map((item) => <article className="message" key={item.id}><span className="message__avatar"><Icon name={item.author_user_id === actorId ? "user" : "chat"} size={19} /></span><div><div className="message__heading"><strong>{discussionAuthor(item, actorId, detail.applicant_user_id, perspective)}</strong><time>{formatDate(item.created_at)}</time></div><p>{item.text}</p></div></article>) : <p className="muted-text">Сообщений пока нет.</p>}</div>
-    {canWrite && detail.status !== "cancelled" && <form className="comment-form" onSubmit={(event) => { event.preventDefault(); if (message.trim()) void run(() => addAccessDiscussionMessage(kind, id, message), "Сообщение отправлено", () => setMessage("")); }}><input aria-label="Сообщение в обсуждении заявки" value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Написать сообщение…" /><button type="submit" className="icon-button icon-button--blue" aria-label="Отправить сообщение" disabled={busy || !message.trim()}><Icon name="send" size={19} /></button></form>}
+    {canWrite && detail.status !== "cancelled" && <form className="access-case-panel__composer" onSubmit={(event) => { event.preventDefault(); if (message.trim()) void run(() => addAccessDiscussionMessage(kind, id, message), "Сообщение отправлено", () => setMessage("")); }}><label htmlFor={`access-message-${id}`}>Ответить в обсуждении</label><textarea id={`access-message-${id}`} value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Напишите сообщение…" rows={3} /><div className="access-case-panel__composer-actions"><button type="submit" className="button button--primary" disabled={busy || !message.trim()}><Icon name="send" size={18} /> Отправить</button></div></form>}
     {notice && <p className="form-success" role="status">{notice}</p>}
     {error && <p className="form-error" role="alert">{error}</p>}
   </div>;
@@ -175,6 +225,8 @@ interface Props {
 
 export function EmployeeAccess({ houses, requests, grants, offers, staff, houseRequests, permissions, companyId, companies, onCompanyChange, onBack, onChanged }: Props) {
   const [tab, setTab] = useState<Tab>("residents");
+  const [actorId, setActorId] = useState("");
+  const [actorPhone, setActorPhone] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [busy, setBusy] = useState(false);
@@ -182,6 +234,8 @@ export function EmployeeAccess({ houses, requests, grants, offers, staff, houseR
   const [offerPhone, setOfferPhone] = useState(isDemoMode ? demoResident.phone : "");
   const [offerEntrance, setOfferEntrance] = useState("");
   const [offerApartment, setOfferApartment] = useState("");
+  const [offerDuration, setOfferDuration] = useState<AccessDuration>("permanent");
+  const [offerValidUntil, setOfferValidUntil] = useState("");
   const [staffPhone, setStaffPhone] = useState("");
   const [rights, setRights] = useState<StaffRights>(noRights);
   const [selectedStaffId, setSelectedStaffId] = useState("");
@@ -193,7 +247,11 @@ export function EmployeeAccess({ houses, requests, grants, offers, staff, houseR
   const [decisionId, setDecisionId] = useState("");
   const [decisionOutcome, setDecisionOutcome] = useState<"granted" | "denied">("granted");
   const [decisionNote, setDecisionNote] = useState("");
+  const [decisionDuration, setDecisionDuration] = useState<AccessDuration>("permanent");
+  const [decisionValidUntil, setDecisionValidUntil] = useState("");
   const [selectedCase, setSelectedCase] = useState<{ kind: AccessRequestKind; id: string } | null>(null);
+  const discussionTarget = useRef<HTMLDivElement>(null);
+  const decisionTarget = useRef<HTMLDivElement>(null);
   const [residentOffset, setResidentOffset] = useState(0);
   const [residentPage, setResidentPage] = useState<AccessRequestsPage | null>(null);
   const [residentLoading, setResidentLoading] = useState(!isDemoMode);
@@ -213,8 +271,29 @@ export function EmployeeAccess({ houses, requests, grants, offers, staff, houseR
   const [grantReason, setGrantReason] = useState("");
   const [confirmRevoke, setConfirmRevoke] = useState(false);
 
+  useEffect(() => {
+    if (isDemoMode) return;
+    let active = true;
+    void getCurrentUser().then((user) => {
+      if (!active) return;
+      setActorId(user.id);
+      setActorPhone(user.phone_number ?? "");
+    }).catch(() => {});
+    return () => { active = false; };
+  }, []);
+
   useEffect(() => { setOfferHouseId(houses[0]?.id ?? ""); }, [companyId, houses]);
   useEffect(() => { setSelectedStaffId(""); setConfirmStaffRevoke(false); setSelectedCase(null); setResidentOffset(0); setHouseOffset(0); }, [companyId]);
+  useEffect(() => {
+    if (!selectedCase) return;
+    const frame = window.requestAnimationFrame(() => discussionTarget.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [selectedCase, tab]);
+  useEffect(() => {
+    if (!decisionId) return;
+    const frame = window.requestAnimationFrame(() => decisionTarget.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [decisionId, tab]);
   useEffect(() => {
     if (isDemoMode) return;
     let cancelled = false;
@@ -268,9 +347,21 @@ export function EmployeeAccess({ houses, requests, grants, offers, staff, houseR
   }
 
   function houseName(id: string): string { return houses.find((item) => item.id === id)?.address ?? "Дом"; }
+  function ownPhone(phone: string): boolean {
+    const actorDigits = actorPhone.replace(/\D/g, "");
+    const targetDigits = phone.replace(/\D/g, "");
+    return actorDigits.length >= 10 && targetDigits.length >= 10 && actorDigits.slice(-10) === targetDigits.slice(-10);
+  }
+  function ownAssignment(assignment: StaffAssignment): boolean {
+    return Boolean(actorId && assignment.userId === actorId) || ownPhone(assignment.phone);
+  }
   function toggleRight(key: keyof StaffRights) { setRights((current) => ({ ...current, [key]: !current[key] })); }
   function toggleCase(kind: AccessRequestKind, id: string) {
     setSelectedCase((current) => current?.kind === kind && current.id === id ? null : { kind, id });
+  }
+  function openDecision(id: string) {
+    setDecisionId(id); setDecisionNote(""); setDecisionDuration("permanent"); setDecisionValidUntil("");
+    window.requestAnimationFrame(() => decisionTarget.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }
   function openGrant(grant: ResidentGrant) {
     setSelectedGrantId((current) => current === grant.id ? "" : grant.id);
@@ -283,6 +374,7 @@ export function EmployeeAccess({ houses, requests, grants, offers, staff, houseR
   async function submitStaffRevoke() {
     const assignment = staff.find((item) => item.id === selectedStaffId);
     if (!permissions.manageStaff || !assignment || !confirmStaffRevoke || busy || isDemoMode) return;
+    if (ownAssignment(assignment)) { setError("Нельзя отозвать собственное назначение сотрудника"); return; }
     await run(() => revokeStaff(assignment.id), () => {
       setSelectedStaffId("");
       setConfirmStaffRevoke(false);
@@ -291,6 +383,8 @@ export function EmployeeAccess({ houses, requests, grants, offers, staff, houseR
   const selectedGrant = grants.find((item) => item.id === selectedGrantId);
   const selectedStaff = staff.find((item) => item.id === selectedStaffId);
   const selectedOfferHouse = houses.find((item) => item.id === offerHouseId);
+  const decisionExpiry = decisionDuration === "temporary" ? validFutureDate(decisionValidUntil) : null;
+  const offerExpiry = offerDuration === "temporary" ? validFutureDate(offerValidUntil) : null;
   const newExpiry = grantValidTo ? new Date(grantValidTo) : null;
   const canExtend = grantAction === "extend" && selectedGrant?.validUntil && newExpiry
     && !Number.isNaN(newExpiry.getTime()) && newExpiry.getTime() > Date.now()
@@ -318,18 +412,34 @@ export function EmployeeAccess({ houses, requests, grants, offers, staff, houseR
           {!residentLoading && !residentError && residentTotal === 0 && permissions.manageResidents && <p className="muted-text">Заявок пока нет.</p>}
           <div className="management-list">{visibleRequests.map((request) => <article className="management-item" key={request.id}>
             <div><strong>{request.fullName}</strong><p>{houseName(request.houseId)} · {formatApartmentLocation(request.apartment, request.entrance)}</p><small>{formatDate(request.createdAt)} · {request.status === "closed" ? request.outcome === "granted" ? "Доступ выдан" : "Отказано" : accessRequestStatusLabels[request.status]}</small>{request.decisionNote && <p>Пояснение: {request.decisionNote}</p>}</div>
-            <div className="button-row"><button type="button" className="button button--soft" aria-expanded={selectedCase?.kind === "resident" && selectedCase.id === request.id} onClick={() => toggleCase("resident", request.id)}>Обсуждение</button>{permissions.manageResidents && request.status !== "closed" && request.status !== "cancelled" && <button type="button" className="button button--soft" onClick={() => { setDecisionId(request.id); setDecisionNote(""); }}>Решение</button>}</div>
+            <div className="button-row"><button type="button" className="button button--soft" aria-expanded={selectedCase?.kind === "resident" && selectedCase.id === request.id} onClick={() => toggleCase("resident", request.id)}>Обсуждение</button>{permissions.manageResidents && request.status !== "closed" && request.status !== "cancelled" && <button type="button" className="button button--soft" onClick={() => openDecision(request.id)}>Решение</button>}</div>
           </article>)}</div>
-          {selectedCase?.kind === "resident" && visibleRequests.some((item) => item.id === selectedCase.id) && <AccessCasePanel key={selectedCase.id} kind="resident" id={selectedCase.id} perspective="staff" canManage={permissions.manageResidents} onChanged={refreshRequests} />}
+          {selectedCase?.kind === "resident" && visibleRequests.some((item) => item.id === selectedCase.id) && <div className="access-case-panel__scroll-target" ref={discussionTarget}><AccessCasePanel key={selectedCase.id} kind="resident" id={selectedCase.id} perspective="staff" canManage={permissions.manageResidents} onChanged={refreshRequests} /></div>}
           <RequestPager total={residentTotal} offset={residentOffset} loading={residentLoading} onPage={(next) => { setResidentOffset(next); setSelectedCase(null); setDecisionId(""); }} />
-          {permissions.manageResidents && decisionId && <div className="decision-box"><h3>Решение по заявке</h3><label className="field"><span>Результат</span><select value={decisionOutcome} onChange={(event) => setDecisionOutcome(event.target.value as "granted" | "denied")}><option value="granted">Выдать доступ</option><option value="denied">Отказать</option></select></label><label className="field"><span>Пояснение · обязательно</span><textarea rows={2} value={decisionNote} onChange={(event) => setDecisionNote(event.target.value)} placeholder="Причина решения" /></label><div className="button-row"><button className="button button--soft" type="button" onClick={() => setDecisionId("")}>Отмена</button><button className="button button--primary" type="button" disabled={busy || !decisionNote.trim()} onClick={() => void run(() => issuesClient.decideResidentRequest(decisionId, decisionOutcome, decisionNote), () => { setDecisionId(""); setDecisionNote(""); setSelectedCase(null); }, isDemoMode ? "Пробное решение сохранено" : "Решение отправлено")}>Сохранить решение</button></div></div>}
+          {permissions.manageResidents && decisionId && <div className="decision-box access-case-panel__scroll-target" ref={decisionTarget}><h3>Решение по заявке</h3><label className="field"><span>Результат</span><select value={decisionOutcome} onChange={(event) => setDecisionOutcome(event.target.value as "granted" | "denied")}><option value="granted">Выдать доступ</option><option value="denied">Отказать</option></select></label>{decisionOutcome === "granted" && <AccessDurationFields id="decision" duration={decisionDuration} onDuration={setDecisionDuration} until={decisionValidUntil} onUntil={setDecisionValidUntil} />}{decisionOutcome === "granted" && decisionDuration === "temporary" && decisionValidUntil && !decisionExpiry && <p className="form-error" role="alert">Укажите будущую дату окончания доступа.</p>}<label className="field"><span>Пояснение · обязательно</span><textarea rows={2} value={decisionNote} onChange={(event) => setDecisionNote(event.target.value)} placeholder="Причина решения" /></label><div className="button-row"><button className="button button--soft" type="button" onClick={() => setDecisionId("")}>Отмена</button><button className="button button--primary" type="button" disabled={busy || !decisionNote.trim() || (decisionOutcome === "granted" && decisionDuration === "temporary" && !decisionExpiry)} onClick={() => void run(() => issuesClient.decideResidentRequest(decisionId, decisionOutcome, decisionNote, decisionOutcome === "granted" ? decisionExpiry ?? undefined : undefined), () => { setDecisionId(""); setDecisionNote(""); setSelectedCase(null); }, isDemoMode ? "Пробное решение сохранено" : "Решение отправлено")}>Сохранить решение</button></div></div>}
         </section>
 
         <section className="panel form-panel"><div className="section-heading"><h2>Доступы жильцов</h2><span className="count-badge">{grants.length}</span></div>{grants.length === 0 && <p className="muted-text">Выданных доступов пока нет.</p>}<div className="management-list">{grants.map((grant) => <article className="management-item" key={grant.id}><span className="small-icon"><Icon name="home" /></span><div><strong>{grant.fullName}</strong><p>{houseName(grant.houseId)} · {formatApartmentLocation(grant.apartment, grant.entrance)}</p><small>{grant.phone} · {grant.status === "revoked" ? "отозван" : grant.status === "expired" ? "истёк" : "действует"}{grant.validUntil && ` · до ${formatDate(grant.validUntil)}`}</small></div>{permissions.manageResidents && grant.status !== "revoked" && <button type="button" className="button button--soft" aria-expanded={selectedGrantId === grant.id} onClick={() => openGrant(grant)}>Доступ</button>}</article>)}</div>
           {permissions.manageResidents && selectedGrant && selectedGrant.status !== "revoked" && <div className="decision-box"><h3>Изменить доступ</h3><p>{selectedGrant.fullName} · {houseName(selectedGrant.houseId)}, кв. {selectedGrant.apartment}</p><label className="field"><span>Действие</span><select value={grantAction} onChange={(event) => { setGrantAction(event.target.value as "extend" | "revoke"); setConfirmRevoke(false); }}><option value="extend" disabled={!selectedGrant.validUntil}>Продлить срок</option><option value="revoke">Отозвать доступ</option></select></label>{grantAction === "extend" ? <><p className="field-help">Текущий срок: {selectedGrant.validUntil ? formatDate(selectedGrant.validUntil) : "без ограничения"}. Новый срок должен быть позднее.</p><label className="field"><span>Новый срок</span><input required type="datetime-local" value={grantValidTo} onChange={(event) => setGrantValidTo(event.target.value)} /></label></> : <><label className="field"><span>Причина отзыва</span><textarea rows={2} value={grantReason} onChange={(event) => setGrantReason(event.target.value)} placeholder="Почему доступ больше не должен действовать" /></label><label className="checkbox-row"><input type="checkbox" checked={confirmRevoke} onChange={(event) => setConfirmRevoke(event.target.checked)} /><span>Подтверждаю отзыв доступа к дому</span></label></>}<div className="button-row"><button type="button" className="button button--soft" onClick={() => setSelectedGrantId("")}>Закрыть</button><button type="button" className="button button--primary" disabled={busy || (grantAction === "extend" ? !canExtend : !grantReason.trim() || !confirmRevoke)} onClick={() => void run(() => changeResidentGrant(selectedGrant.id, grantAction, grantAction === "extend" ? newExpiry?.toISOString() : undefined, grantAction === "revoke" ? grantReason : undefined), () => { setSelectedGrantId(""); setGrantValidTo(""); setGrantReason(""); setConfirmRevoke(false); }, grantAction === "extend" ? "Доступ продлён" : "Доступ отозван")}>Сохранить</button></div></div>}
         </section>
 
-        {permissions.manageResidents && <section className="panel form-panel"><h2>Предложить доступ по номеру</h2><p className="section-description">Доступ появится только после принятия человеком с подтверждённого номера.{isDemoMode && ` Номер жильца в демо: ${demoResident.phone}.`}</p><form onSubmit={(event) => { event.preventDefault(); void run(() => issuesClient.createResidentOffer({ houseId: offerHouseId, phone: offerPhone, entrance: Number(offerEntrance), apartment: Number(offerApartment) }), () => { setOfferPhone(""); setOfferEntrance(""); setOfferApartment(""); }, isDemoMode ? "Предложение сохранено в демо" : "Предложение отправлено"); }}><label className="field"><span>Дом</span><select value={offerHouseId} onChange={(event) => setOfferHouseId(event.target.value)}>{houses.map((house) => <option key={house.id} value={house.id}>{house.address}</option>)}</select></label><label className="field"><span>Номер телефона</span><input required type="tel" value={offerPhone} onChange={(event) => setOfferPhone(event.target.value)} placeholder="+7 999 123-45-67" /></label><div className="field-grid"><label className="field"><span>Подъезд</span><input required type="number" min="1" max={selectedOfferHouse?.entranceCount ?? undefined} value={offerEntrance} onChange={(event) => setOfferEntrance(event.target.value)} />{selectedOfferHouse?.entranceCount && <span className="field-help">От 1 до {selectedOfferHouse.entranceCount}</span>}</label><label className="field"><span>Квартира</span><input required type="number" min="1" value={offerApartment} onChange={(event) => setOfferApartment(event.target.value)} /></label></div><button type="submit" className="button button--primary button--wide management-submit" disabled={busy || !offerHouseId}>{isDemoMode ? "Создать пробное предложение" : "Отправить предложение"}</button></form>{offers.length > 0 && <div className="management-list"><h3>Предложения</h3>{offers.map((offer) => <article className="management-item" key={offer.id}><div><strong>{offer.phone}</strong><p>{houseName(offer.houseId)} · {formatApartmentLocation(offer.apartment, offer.entrance)}</p><small>{offer.status === "pending" ? "Ожидает ответа" : offer.status === "accepted" ? "Принято" : offer.status === "cancelled" ? "Отменено" : "Отклонено"}</small></div></article>)}</div>}</section>}
+        {permissions.manageResidents && <section className="panel form-panel">
+          <h2>Предложить доступ по номеру</h2>
+          <p className="section-description">Доступ появится только после принятия человеком с подтверждённого номера.{isDemoMode && ` Номер жильца в демо: ${demoResident.phone}.`}</p>
+          <form onSubmit={(event) => {
+            event.preventDefault();
+            if (offerDuration === "temporary" && !offerExpiry) { setError("Укажите будущую дату окончания доступа"); return; }
+            void run(() => issuesClient.createResidentOffer({ houseId: offerHouseId, phone: offerPhone, entrance: Number(offerEntrance), apartment: Number(offerApartment), validUntil: offerExpiry ?? undefined }), () => { setOfferPhone(""); setOfferEntrance(""); setOfferApartment(""); setOfferDuration("permanent"); setOfferValidUntil(""); }, isDemoMode ? "Предложение сохранено в демо" : "Предложение отправлено");
+          }}>
+            <label className="field"><span>Дом</span><select value={offerHouseId} onChange={(event) => setOfferHouseId(event.target.value)}>{houses.map((house) => <option key={house.id} value={house.id}>{house.address}</option>)}</select></label>
+            <label className="field"><span>Номер телефона</span><input required type="tel" value={offerPhone} onChange={(event) => setOfferPhone(event.target.value)} placeholder="+7 999 123-45-67" /></label>
+            <div className="field-grid"><label className="field"><span>Подъезд</span><input required type="number" min="1" max={selectedOfferHouse?.entranceCount ?? undefined} value={offerEntrance} onChange={(event) => setOfferEntrance(event.target.value)} />{selectedOfferHouse?.entranceCount && <span className="field-help">От 1 до {selectedOfferHouse.entranceCount}</span>}</label><label className="field"><span>Квартира</span><input required type="number" min="1" max={selectedOfferHouse?.apartmentCount ?? undefined} value={offerApartment} onChange={(event) => setOfferApartment(event.target.value)} />{selectedOfferHouse?.apartmentCount && <span className="field-help">От 1 до {selectedOfferHouse.apartmentCount}</span>}</label></div>
+            <AccessDurationFields id="offer" duration={offerDuration} onDuration={setOfferDuration} until={offerValidUntil} onUntil={setOfferValidUntil} />
+            {offerDuration === "temporary" && offerValidUntil && !offerExpiry && <p className="form-error" role="alert">Укажите будущую дату окончания доступа.</p>}
+            <button type="submit" className="button button--primary button--wide management-submit" disabled={busy || !offerHouseId || (offerDuration === "temporary" && !offerExpiry)}>{isDemoMode ? "Создать пробное предложение" : "Отправить предложение"}</button>
+          </form>
+          {offers.length > 0 && <div className="management-list"><h3>Предложения</h3>{offers.map((offer) => <article className="management-item" key={offer.id}><div><strong>{offer.phone}</strong><p>{houseName(offer.houseId)} · {formatApartmentLocation(offer.apartment, offer.entrance)}</p><small>{offer.status === "pending" ? "Ожидает ответа" : offer.status === "accepted" ? "Принято" : offer.status === "cancelled" ? "Отменено" : "Отклонено"}{offer.validUntil && ` · до ${formatDate(offer.validUntil)}`}</small></div></article>)}</div>}
+        </section>}
       </div>}
 
       {tab === "staff" && <div className="management-stack">
@@ -340,12 +450,13 @@ export function EmployeeAccess({ houses, requests, grants, offers, staff, houseR
           <div className="management-list">{staff.map((person) => <article className="management-item" key={person.id}>
             <span className="small-icon"><Icon name="user" /></span>
             <div><strong>{person.fullName ?? person.phone}</strong><p>{person.phone}{!person.bound && " · ожидает входа"}</p><div className="rights-tags">{person.rights.manageStaff && <span>Сотрудники</span>}{person.rights.manageResidents && <span>Жильцы</span>}{person.rights.manageIssues && <span>Проблемы</span>}</div></div>
-            {permissions.manageStaff && <span className="staff-management-actions">
+            {permissions.manageStaff && ownAssignment(person) && <small>Своё назначение изменять нельзя</small>}
+            {permissions.manageStaff && !ownAssignment(person) && <span className="staff-management-actions">
               <button type="button" className="button button--soft" onClick={() => { setStaffPhone(person.phone); setRights({ ...person.rights }); }}>Права</button>
               {!isDemoMode && <button type="button" className="button button--soft" aria-expanded={selectedStaffId === person.id} onClick={() => { setSelectedStaffId(person.id); setConfirmStaffRevoke(false); }}>Отозвать</button>}
             </span>}
           </article>)}</div>
-          {permissions.manageStaff && !isDemoMode && selectedStaff && <div className="decision-box">
+          {permissions.manageStaff && !isDemoMode && selectedStaff && !ownAssignment(selectedStaff) && <div className="decision-box">
             <h3>Отозвать назначение сотрудника?</h3>
             <p>{selectedStaff.fullName ?? selectedStaff.phone} · {selectedStaff.phone}. После отзыва сотрудник потеряет права в кабинете этой УК.</p>
             <label className="checkbox-row"><input type="checkbox" checked={confirmStaffRevoke} onChange={(event) => setConfirmStaffRevoke(event.target.checked)} /><span>Подтверждаю отзыв назначения</span></label>
@@ -355,7 +466,7 @@ export function EmployeeAccess({ houses, requests, grants, offers, staff, houseR
             </div>
           </div>}
         </section>
-        {permissions.manageStaff && <section className="panel form-panel"><h2>Добавить или изменить сотрудника</h2><p className="section-description">Назначение привяжется к человеку после входа с подтверждённым номером.</p><form onSubmit={(event) => { event.preventDefault(); void run(() => issuesClient.assignStaff(companyId, staffPhone, rights), () => { setStaffPhone(""); setRights(noRights); }, isDemoMode ? "Пробное назначение сохранено" : "Права сотрудника сохранены"); }}><label className="field"><span>Номер телефона</span><input required type="tel" value={staffPhone} onChange={(event) => setStaffPhone(event.target.value)} placeholder="+7 999 123-45-67" /></label><div className="rights-list"><label className="checkbox-row"><input type="checkbox" checked={rights.manageStaff} onChange={() => toggleRight("manageStaff")} /><span>Управлять сотрудниками и правами</span></label><label className="checkbox-row"><input type="checkbox" checked={rights.manageResidents} onChange={() => toggleRight("manageResidents")} /><span>Рассматривать заявки жильцов и выдавать доступ</span></label><label className="checkbox-row"><input type="checkbox" checked={rights.manageIssues} onChange={() => toggleRight("manageIssues")} /><span>Вести проблемы и отвечать официально</span></label></div><button type="submit" className="button button--primary button--wide management-submit" disabled={busy}>Сохранить назначение</button></form></section>}
+        {permissions.manageStaff && <section className="panel form-panel"><h2>Добавить или изменить сотрудника</h2><p className="section-description">Назначение привяжется к человеку после входа с подтверждённым номером.</p><form onSubmit={(event) => { event.preventDefault(); if (ownPhone(staffPhone)) { setError("Нельзя изменить собственные права сотрудника"); return; } void run(() => issuesClient.assignStaff(companyId, staffPhone, rights), () => { setStaffPhone(""); setRights(noRights); }, isDemoMode ? "Пробное назначение сохранено" : "Права сотрудника сохранены"); }}><label className="field"><span>Номер телефона</span><input required type="tel" value={staffPhone} onChange={(event) => setStaffPhone(event.target.value)} placeholder="+7 999 123-45-67" /></label>{ownPhone(staffPhone) && <p className="form-warning">Свои права сотрудника менять нельзя. Попросите другого уполномоченного сотрудника.</p>}<div className="rights-list"><label className="checkbox-row"><input type="checkbox" checked={rights.manageStaff} onChange={() => toggleRight("manageStaff")} /><span>Управлять сотрудниками и правами</span></label><label className="checkbox-row"><input type="checkbox" checked={rights.manageResidents} onChange={() => toggleRight("manageResidents")} /><span>Рассматривать заявки жильцов и выдавать доступ</span></label><label className="checkbox-row"><input type="checkbox" checked={rights.manageIssues} onChange={() => toggleRight("manageIssues")} /><span>Вести проблемы и отвечать официально</span></label></div><button type="submit" className="button button--primary button--wide management-submit" disabled={busy || ownPhone(staffPhone)}>Сохранить назначение</button></form></section>}
       </div>}
 
       {tab === "houses" && <div className="management-stack">
@@ -368,7 +479,7 @@ export function EmployeeAccess({ houses, requests, grants, offers, staff, houseR
           {houseError && <p className="form-error" role="alert">{houseError}</p>}
           {!houseLoading && !houseError && houseTotal === 0 && <p className="muted-text">Ваших заявок пока нет.</p>}
           <div className="management-list">{visibleHouseRequests.map((request) => <article className="management-item" key={request.id}><div><strong>{request.address}</strong><p>{formatHouseCounts(request.entranceCount, request.apartmentCount)}</p>{request.explanation && <p>{request.explanation}</p>}<small>{accessRequestStatusLabels[request.status as AccessRequestStatus] ?? request.status} · {formatDate(request.createdAt)}</small></div><button type="button" className="button button--soft" aria-expanded={selectedCase?.kind === "house_addition" && selectedCase.id === request.id} onClick={() => toggleCase("house_addition", request.id)}>Обсуждение</button></article>)}</div>
-          {selectedCase?.kind === "house_addition" && visibleHouseRequests.some((item) => item.id === selectedCase.id) && <AccessCasePanel key={selectedCase.id} kind="house_addition" id={selectedCase.id} perspective="applicant" onChanged={refreshRequests} />}
+          {selectedCase?.kind === "house_addition" && visibleHouseRequests.some((item) => item.id === selectedCase.id) && <div className="access-case-panel__scroll-target" ref={discussionTarget}><AccessCasePanel key={selectedCase.id} kind="house_addition" id={selectedCase.id} perspective="applicant" onChanged={refreshRequests} /></div>}
           <RequestPager total={houseTotal} offset={houseOffset} loading={houseLoading} onPage={(next) => { setHouseOffset(next); setSelectedCase(null); }} />
         </section>
         {!isDemoMode && <section className="panel form-panel">
@@ -377,7 +488,7 @@ export function EmployeeAccess({ houses, requests, grants, offers, staff, houseR
           {companyRequestsError && <p className="form-error" role="alert">{companyRequestsError}</p>}
           {!companyLoading && !companyRequestsError && companyTotal === 0 && <p className="muted-text">Обращений пока нет.</p>}
           <div className="management-list">{companyRequests.map((request) => <article className="management-item" key={request.id}><div><strong>{request.proposed_company_name || "Регистрация УК"}</strong><small>{accessRequestStatusLabels[request.status] ?? request.status} · {formatDate(request.created_at)}</small></div><button type="button" className="button button--soft" aria-expanded={selectedCase?.kind === "company_registration" && selectedCase.id === request.id} onClick={() => toggleCase("company_registration", request.id)}>Обсуждение</button></article>)}</div>
-          {selectedCase?.kind === "company_registration" && companyRequests.some((item) => item.id === selectedCase.id) && <AccessCasePanel key={selectedCase.id} kind="company_registration" id={selectedCase.id} perspective="applicant" onChanged={refreshCompanyRequests} />}
+          {selectedCase?.kind === "company_registration" && companyRequests.some((item) => item.id === selectedCase.id) && <div className="access-case-panel__scroll-target" ref={discussionTarget}><AccessCasePanel key={selectedCase.id} kind="company_registration" id={selectedCase.id} perspective="applicant" onChanged={refreshCompanyRequests} /></div>}
           <RequestPager total={companyTotal} offset={companyOffset} loading={companyLoading} onPage={(next) => { setCompanyOffset(next); setSelectedCase(null); }} />
         </section>}
       </div>}

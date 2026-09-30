@@ -61,6 +61,43 @@ class IssueUiTests(unittest.IsolatedAsyncioTestCase):
         update.assert_awaited_once()
         self.assertEqual(update.await_args.kwargs["step"], "scope_location")
 
+    async def test_entrance_choice_uses_unique_entrances_not_apartments(self) -> None:
+        first_id, second_id, third_id = uuid4(), uuid4(), uuid4()
+        dialog = SimpleNamespace(data={"house_id": str(uuid4())})
+        self.session.get = AsyncMock(return_value=SimpleNamespace(archived_at=None))
+        apartments = {
+            first_id: SimpleNamespace(id=first_id, entrance_number=2, apartment_number=14),
+            second_id: SimpleNamespace(id=second_id, entrance_number=2, apartment_number=15),
+            third_id: SimpleNamespace(id=third_id, entrance_number=3, apartment_number=41),
+        }
+        with (
+            patch.object(issues_ui, "_active_resident_apartments", new=AsyncMock(return_value=apartments)),
+            patch.object(issues_ui, "update_dialog", new=AsyncMock()),
+        ):
+            reply = await issues_ui._location_options(self.session, self.actor, dialog, "entrance")
+        labels = [button.text for row in reply.buttons for button in row]
+        self.assertIn("Подъезд №2", labels)
+        self.assertIn("Подъезд №3", labels)
+        self.assertNotIn("Квартира 14, подъезд 2", labels)
+        self.assertTrue(reply.text.startswith("Выберите свой подъезд"))
+
+    async def test_one_entrance_across_two_apartments_needs_no_extra_choice(self) -> None:
+        first_id, second_id = uuid4(), uuid4()
+        dialog = SimpleNamespace(data={"house_id": str(uuid4())})
+        self.session.get = AsyncMock(return_value=SimpleNamespace(archived_at=None))
+        apartments = {
+            first_id: SimpleNamespace(id=first_id, entrance_number=2, apartment_number=14),
+            second_id: SimpleNamespace(id=second_id, entrance_number=2, apartment_number=15),
+        }
+        with (
+            patch.object(issues_ui, "_active_resident_apartments", new=AsyncMock(return_value=apartments)),
+            patch.object(issues_ui, "_prepare_preview", new=AsyncMock(return_value=UiReply("Проверка"))) as preview,
+        ):
+            reply = await issues_ui._location_options(self.session, self.actor, dialog, "entrance")
+        self.assertEqual(reply.text, "Проверка")
+        self.assertEqual(preview.await_args.args[3], "entrance")
+        self.assertIn(preview.await_args.args[4], {first_id, second_id})
+
     async def test_forged_location_button_does_not_create_draft(self) -> None:
         own_id, foreign_id = uuid4(), uuid4()
         dialog = SimpleNamespace(
@@ -566,6 +603,81 @@ class IssueUiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["summary_description"], "Лифт не работает с утра")
         self.assertIn("Автоматическая сводка недоступна", reply.text)
 
+    async def test_preview_replaces_stale_automatic_fields_but_keeps_manual_edits(self) -> None:
+        house_id, category_id, apartment_id = uuid4(), uuid4(), uuid4()
+        description = "В доме нет света"
+        self.session.get = AsyncMock(return_value=SimpleNamespace(archived_at=None))
+        suggestion = SimpleNamespace(
+            suggested_title="Отсутствие света",
+            similar_card_ids=[],
+            candidates=[],
+            source="gigachat",
+            description_check="ok",
+            description_warning=None,
+            summary_description="В доме отсутствует электроснабжение.",
+        )
+        with (
+            patch.object(issues_ui, "suggest_issue", new=AsyncMock(return_value=suggestion)),
+            patch.object(issues_ui, "_active_resident_apartments", new=AsyncMock(return_value={
+                apartment_id: SimpleNamespace(id=apartment_id, entrance_number=2, apartment_number=14),
+            })),
+            patch.object(
+                issues_ui, "save_draft",
+                new=AsyncMock(return_value=SimpleNamespace(id=uuid4(), revision=1)),
+            ) as save,
+        ):
+            for markers, expected_title, expected_summary in (
+                ({}, "Отсутствие света", "В доме отсутствует электроснабжение."),
+                ({"_manual_title_description": description,
+                  "_manual_summary_description": description}, "Ручное название", "Ручная сводка"),
+                ({"_manual_title_description": "Старое описание",
+                  "_manual_summary_description": "Старое описание"}, "Отсутствие света", "В доме отсутствует электроснабжение."),
+            ):
+                with self.subTest(markers=markers):
+                    dialog = SimpleNamespace(
+                        data={
+                            "house_id": str(house_id),
+                            "category_id": str(category_id),
+                            "description": description,
+                            "title": "Ручное название" if markers else "п",
+                            "summary_description": "Ручная сводка" if markers else "п",
+                            **markers,
+                        },
+                        draft_id=None,
+                        step="scope",
+                    )
+                    await issues_ui._prepare_preview(
+                        self.session, self.actor, dialog, "house"
+                    )
+                    payload = save.await_args.kwargs["payload"]
+                    self.assertEqual(payload["title"], expected_title)
+                    self.assertEqual(payload["summary_description"], expected_summary)
+                    self.assertEqual(dialog.data["title"], expected_title)
+                    self.assertEqual(dialog.data["summary_description"], expected_summary)
+
+    async def test_description_edit_only_clears_manual_fields_when_text_changes(self) -> None:
+        original = "В доме нет света"
+        for submitted, keep_manual in ((original, True), ("В подъезде нет света", False)):
+            with self.subTest(submitted=submitted):
+                dialog = SimpleNamespace(
+                    flow_kind="issue_new",
+                    step="description",
+                    data={
+                        "description": original,
+                        "title": "Ручное название",
+                        "summary_description": "Ручная сводка",
+                        "_manual_title_description": original,
+                        "_manual_summary_description": original,
+                    },
+                )
+                with patch.object(
+                    issues_ui, "_scope_options", new=AsyncMock(return_value=UiReply("Область"))
+                ):
+                    await issues_ui.handle_text(self.session, self.actor, dialog, submitted)
+                self.assertEqual(dialog.data["description"], submitted)
+                self.assertEqual("_manual_title_description" in dialog.data, keep_manual)
+                self.assertEqual("_manual_summary_description" in dialog.data, keep_manual)
+
     async def test_summary_can_be_changed_only_on_final_screen(self) -> None:
         draft_id = uuid4()
         dialog = SimpleNamespace(
@@ -614,6 +726,7 @@ class IssueUiTests(unittest.IsolatedAsyncioTestCase):
             )
         self.assertEqual(dialog.step, "attachments")
         self.assertEqual(dialog.data["draft_revision"], 3)
+        self.assertEqual(dialog.data["_manual_summary_description"], "Лифт не работает")
         self.assertEqual(
             save.await_args.kwargs["payload"],
             {

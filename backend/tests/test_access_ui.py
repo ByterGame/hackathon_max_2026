@@ -360,7 +360,24 @@ class AccessUiTests(unittest.IsolatedAsyncioTestCase):
         payloads = [button.payload for row in reply.buttons for button in row]
         self.assertIn(f"a:req_edit:{request_id}", payloads)
         self.assertIn(f"a:req_message:resident:{request_id}", payloads)
+        self.assertIn(f"f:access:{request_id}", payloads)
+        self.assertIn(f"a:req_file:{request_id}", payloads)
         self.assertNotIn(f"a:decision:resident:{request_id}:granted", payloads)
+
+    async def test_add_resident_file_button_checks_write_access(self) -> None:
+        request_id = uuid4()
+        with (
+            patch("src.bot.handlers.access_ui.require_file_parent", new_callable=AsyncMock) as parent,
+            patch("src.bot.handlers.access_ui.set_dialog", new_callable=AsyncMock) as dialog,
+        ):
+            reply = await handle_action(
+                self.session, self.actor, f"a:req_file:{request_id}"
+            )
+        parent.assert_awaited_once_with(
+            self.session, self.actor, "resident", request_id, writing=True
+        )
+        self.assertEqual(dialog.await_args.kwargs["flow_kind"], "access_file")
+        self.assertIn("без подписи", reply.text)
 
     async def test_read_only_employee_does_not_get_resident_mutations(self) -> None:
         request_id, house_id, company_id = uuid4(), uuid4(), uuid4()
@@ -399,6 +416,7 @@ class AccessUiTests(unittest.IsolatedAsyncioTestCase):
         payloads = [button.payload for row in reply.buttons for button in row]
         self.assertNotIn(f"a:decision:resident:{request_id}:granted", payloads)
         self.assertNotIn(f"a:req_message:resident:{request_id}", payloads)
+        self.assertNotIn(f"a:req_file:{request_id}", payloads)
 
     async def test_discussion_buttons_reach_all_messages_and_recheck_access(self) -> None:
         request_id = uuid4()

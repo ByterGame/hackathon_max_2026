@@ -49,6 +49,12 @@ def _keywords(value: str) -> set[str]:
     return set(re.findall(r"[а-яёa-z0-9]{3,}", value.casefold()))
 
 
+def _has_meaningful_summary(value: str) -> bool:
+    # A one-letter or one-word completion is not a formalized description.
+    words = re.findall(r"[а-яёa-z0-9]+", value.casefold())
+    return len(words) >= 2 and any(len(word) >= 3 for word in words)
+
+
 def local_title(description: str) -> str:
     """Give the resident an editable starting point if the model is unavailable."""
     first_sentence = re.split(r"[.!?\n]", description.strip(), maxsplit=1)[0]
@@ -296,10 +302,11 @@ def _validate_provider_payload(
     title = " ".join(raw_title.split())
     summary = " ".join(raw_summary.split())
     if (
-        not title
+        len(title) < 3
         or len(title) > 100
         or any(ord(char) < 32 or ord(char) == 127 for char in title)
         or not summary
+        or not _has_meaningful_summary(summary)
         or len(summary) > 500
         or any(ord(char) < 32 or ord(char) == 127 for char in summary)
         or len(raw_ids) > MAX_SUGGESTED_DUPLICATES

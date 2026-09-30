@@ -110,7 +110,7 @@ class ProfileFullNameTests(unittest.IsolatedAsyncioTestCase):
             patch("src.domain.access.resident.commit_or_conflict", new_callable=AsyncMock) as commit,
             patch("src.domain.access.resident.audit"),
         ):
-            require.return_value = SimpleNamespace(id=house_id, archived_at=None, entrance_count=5)
+            require.return_value = SimpleNamespace(id=house_id, archived_at=None, entrance_count=5, apartment_count=100)
             request = await create_resident_request(
                 self.session, self.user,
                 house_id=house_id, entrance_number=2, apartment_number=12, full_name="Иван Иванов",
@@ -133,7 +133,7 @@ class ProfileFullNameTests(unittest.IsolatedAsyncioTestCase):
         ):
             require.side_effect = [
                 self.open_request,
-                SimpleNamespace(id=self.open_request.house_id, entrance_count=5),
+                SimpleNamespace(id=self.open_request.house_id, entrance_count=5, apartment_count=100),
             ]
             await update_resident_request(
                 self.session, self.user,

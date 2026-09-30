@@ -55,6 +55,7 @@ services:
       GIGACHAT_VERIFY_SSL: "${GIGACHAT_VERIFY_SSL:?Set GIGACHAT_VERIFY_SSL in .env}"
       GIGACHAT_CA_BUNDLE: "${GIGACHAT_CA_BUNDLE?Set GIGACHAT_CA_BUNDLE in .env (empty if unused)}"
       FILE_STORAGE_ROOT: "${FILE_STORAGE_ROOT:?Set FILE_STORAGE_ROOT in .env}"
+      TEST_MODE: "${TEST_MODE:-0}"
     volumes:
       - private_files:${FILE_STORAGE_ROOT:?Set FILE_STORAGE_ROOT in .env}
     ports:

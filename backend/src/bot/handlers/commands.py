@@ -28,8 +28,10 @@ from src.bot.handlers.issues_text import handle_issue_text
 from src.bot.handlers.issues_ui import handle_action as handle_issue_action
 from src.bot.handlers.issues_ui import handle_text as handle_issue_input
 from src.bot.handlers.media_text import (
+    get_access_attachment,
     get_card_attachment,
     handle_media_text,
+    list_access_attachments,
     list_card_attachments,
 )
 from src.bot.handlers.notifications_text import handle_notification_text
@@ -61,7 +63,8 @@ GENERAL_HELP = (
     "В любой момент можно отправить /cancel или нажать «Главное меню».\n"
     "Текстовые команды тоже доступны: /access help, /issuehelp, /drafthelp, "
     "/notificationhelp, /filehelp, /files UUID_карточки, "
-    "/getfile UUID_карточки UUID_файла. /whoami показывает ваш MAX ID. "
+    "/files access UUID_заявки, /getfile UUID_карточки UUID_файла. "
+    "/whoami показывает ваш MAX ID. "
     "Администратору доступна команда /admin."
 )
 
@@ -268,6 +271,15 @@ async def _handle_action(session: AsyncSession, actor: User, payload: str) -> Ui
             return await get_card_attachment(
                 session, actor, UUID(parts[2]), UUID(parts[3])
             )
+        if len(parts) in {3, 4} and parts[1] == "access":
+            page = int(parts[3]) if len(parts) == 4 else 0
+            return await list_access_attachments(
+                session, actor, UUID(parts[2]), page=page
+            )
+        if len(parts) == 4 and parts[1] == "access_get":
+            return await get_access_attachment(
+                session, actor, UUID(parts[2]), UUID(parts[3])
+            )
         return UiReply("Кнопка вложения устарела. Откройте карточку заново.")
     if payload.startswith("a:"):
         result = await handle_access_action(session, actor, payload)
@@ -334,12 +346,20 @@ def build_router(
         if fields and fields[0] == "/admin":
             return await admin_ui.handle_command(session, actor, command), None
         if fields and fields[0].lower() == "/files":
+            if len(fields) == 3 and fields[1].lower() == "access":
+                return await list_access_attachments(
+                    session, actor, UUID(fields[2])
+                ), None
             if len(fields) != 2:
-                return UiReply("Формат: /files UUID_карточки"), None
+                return UiReply("Формат: /files UUID_карточки или /files access UUID_заявки"), None
             return await list_card_attachments(session, actor, UUID(fields[1])), None
         if fields and fields[0].lower() == "/getfile":
+            if len(fields) == 4 and fields[1].lower() == "access":
+                return await get_access_attachment(
+                    session, actor, UUID(fields[2]), UUID(fields[3])
+                ), None
             if len(fields) != 3:
-                return UiReply("Формат: /getfile UUID_карточки UUID_файла"), None
+                return UiReply("Формат: /getfile UUID_карточки UUID_файла или /getfile access UUID_заявки UUID_файла"), None
             return (
                 await get_card_attachment(
                     session, actor, UUID(fields[1]), UUID(fields[2])
@@ -383,16 +403,33 @@ def build_router(
             if caption:
                 command += f" | {caption}"
             buttons = [[Button("Открыть карточку", f"i:card:{card_id}")]]
+        elif (
+            dialog.flow_kind == "access_file"
+            and dialog.step == "upload"
+            and dialog.data.get("request_id")
+        ):
+            if caption:
+                return (
+                    UiReply(
+                        "Отправьте вложение без подписи. Пояснение напишите отдельно в обсуждении заявки."
+                    ),
+                    None,
+                )
+            request_id = dialog.data["request_id"]
+            command = f"/file access {request_id}"
+            buttons = [[Button("Открыть заявку", f"a:request:resident:{request_id}")]]
         else:
             return (
                 UiReply(
-                    "Сначала дойдите до шага вложений или откройте обсуждение проблемы."
+                    "Сначала дойдите до шага вложений проблемы или откройте заявку на доступ и выберите «Прикрепить файл»."
                 ),
                 None,
             )
         result = await handle_media_text(session, actor, command, attachments, bot=bot)
         if result is None:
             return UiReply("Не удалось определить вложение. Попробуйте ещё раз."), None
+        if dialog.flow_kind == "access_file":
+            await clear_dialog(session, actor.id)
         return UiReply(result.reply, buttons), result.storage_key
 
     async def process_message(event: MessageCreated, trace: UpdateTrace) -> None:
@@ -495,7 +532,7 @@ def build_router(
                         )
                     elif body.attachments:
                         reply = UiReply(
-                            "Сначала откройте проблему или черновик, затем отправьте вложение."
+                            "Сначала откройте проблему, черновик или заявку на доступ, затем выберите добавление вложения."
                         )
                     else:
                         reply = _home(actor)

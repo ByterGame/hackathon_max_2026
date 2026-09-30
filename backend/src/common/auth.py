@@ -11,7 +11,8 @@ from typing import Annotated
 from urllib.parse import parse_qsl
 from uuid import uuid4
 
-from fastapi import Depends, Header, HTTPException, Request
+from fastapi import Depends, HTTPException, Request, Security
+from fastapi.security import APIKeyHeader
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,6 +26,14 @@ from src.db.session import get_session
 MAX_AUTH_MAX_AGE_SECONDS = 3600
 MAX_AUTH_FUTURE_SKEW_SECONDS = 300
 logger = logging.getLogger(__name__)
+max_init_data_header = APIKeyHeader(
+    name="X-Max-Init-Data",
+    auto_error=False,
+    description=(
+        "Подписанные данные запуска мини-приложения MAX. "
+        "Получаются при открытии приложения в MAX и действуют один час."
+    ),
+)
 
 
 def _is_fresh(value: str, *, now: int | None = None) -> bool:
@@ -303,7 +312,7 @@ async def link_verified_phone(
 async def get_current_user(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
-    init_data: Annotated[str | None, Header(alias="X-Max-Init-Data")] = None,
+    init_data: Annotated[str | None, Security(max_init_data_header)],
 ) -> User:
     if init_data is None:
         request.state.error_code = "max_launch_data_required"

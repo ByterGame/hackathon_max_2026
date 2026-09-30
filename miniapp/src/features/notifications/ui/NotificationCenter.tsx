@@ -82,15 +82,16 @@ interface Props {
   busyId: string | null;
   onBack: () => void;
   onRefresh: () => void;
+  onMarkAll: () => void;
   onOpen: (item: AppNotification) => void;
   onMarkRead: (item: AppNotification) => void;
 }
 
-export function NotificationCenter({ role, snapshot, items, loading, error, busyId, onBack, onRefresh, onOpen, onMarkRead }: Props) {
+export function NotificationCenter({ role, snapshot, items, loading, error, busyId, onBack, onRefresh, onMarkAll, onOpen, onMarkRead }: Props) {
   const unreadCount = items.filter((item) => !item.read_at).length;
   return <div className="page page--notifications notifications-page">
-    <ScreenHeader title="Уведомления" subtitle={unreadCount ? `Непрочитанных: ${unreadCount}` : "Обновления по вашим делам"} onBack={onBack} />
-    <div className="notifications-page__toolbar"><p>Здесь те же события по заявкам и проблемам, о которых пишет бот.</p><button type="button" className="text-link" disabled={loading} onClick={onRefresh}>Обновить</button></div>
+    <ScreenHeader title="Уведомления" subtitle={unreadCount ? `Непрочитанных на странице: ${unreadCount}` : "Обновления по вашим делам"} onBack={onBack} />
+    <div className="notifications-page__toolbar"><p>Здесь те же события по заявкам и проблемам, о которых пишет бот.</p><div className="notifications-page__toolbar-actions"><button type="button" className="text-link" disabled={loading || busyId !== null || items.length === 0} onClick={onMarkAll}>{busyId === "all" ? "Отмечаем…" : "Прочитать все"}</button><button type="button" className="text-link" disabled={loading || busyId !== null} onClick={onRefresh}>Обновить</button></div></div>
     {loading && !items.length && <p className="muted-text" role="status">Загружаем уведомления…</p>}
     {error && <div className="panel notifications-page__error" role="alert"><p>{error}</p><button type="button" className="button button--soft" onClick={onRefresh}>Повторить</button></div>}
     {!loading && !error && !items.length && <div className="panel empty-state notifications-page__empty"><Icon name="bell" size={28} /><strong>Уведомлений пока нет</strong><p>Ответы и обновления появятся здесь.</p></div>}

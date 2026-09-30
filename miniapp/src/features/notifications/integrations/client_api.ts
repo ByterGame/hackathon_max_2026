@@ -44,3 +44,13 @@ export async function markAppNotificationRead(id: string): Promise<void> {
     body: JSON.stringify({ notification_id: id }),
   });
 }
+
+export async function markAllAppNotificationsRead(role: NotificationAudience, snapshot: AppSnapshot | null): Promise<void> {
+  if (isDemoMode) {
+    if (snapshot && (role === "resident" || role === "employee")) {
+      for (const item of demoNotifications(role, snapshot)) demoRead.add(item.id);
+    }
+    return;
+  }
+  await requestJson<{ marked: number }>("/notifications/mark_all_read", { method: "POST" });
+}

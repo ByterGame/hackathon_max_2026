@@ -25,7 +25,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.bot.ui import Button, UiReply
 from src.db.models import File, IssueMessage, IssueReport, User
 from src.domain.drafts.service import get_draft
-from src.domain.files.service import get_file, upload
+from src.domain.files.service import _parent as require_file_parent
+from src.domain.files.service import get_file, list_files, upload
 from src.domain.files.storage import (
     ALLOWED_EXTENSIONS,
     MAX_FILE_BYTES,
@@ -38,7 +39,9 @@ from src.domain.issues.service import add_comment, get_visible_card
 MEDIA_HELP = (
     "Чтобы прикрепить фото, PDF или видео, отправьте одно вложение с подписью:\n"
     "/file draft UUID_черновика — в свой черновик проблемы;\n"
-    "/file card UUID_карточки | комментарий — в обсуждение доступной проблемы.\n"
+    "/file card UUID_карточки | комментарий — в обсуждение доступной проблемы;\n"
+    "/file access UUID_заявки — в заявку на доступ к дому.\n"
+    "Чтобы посмотреть вложения заявки: /files access UUID_заявки. "
     "Допустимы JPEG, PNG, WebP, PDF, MP4 и MOV до 8 МиБ. "
     "При /draft send файлы черновика привяжутся к исходному описанию карточки."
 )
@@ -178,6 +181,59 @@ async def get_card_attachment(
     )
 
 
+async def list_access_attachments(
+    session: AsyncSession, actor: User, request_id: UUID, *, page: int = 0
+) -> UiReply:
+    if page < 0 or page > 1000:
+        raise ValueError("Некорректная страница вложений")
+    rows = await list_files(
+        session, actor, parent_kind="resident", parent_id=request_id
+    )
+    start = page * _FILE_PAGE_SIZE
+    selected = rows[start : start + _FILE_PAGE_SIZE]
+    buttons = [
+        _file_button(item.original_name[:55], f"f:access_get:{request_id}:{item.id}")
+        for item in selected
+    ]
+    navigation: list[Button] = []
+    if page:
+        navigation.append(Button("Назад", f"f:access:{request_id}:{page - 1}"))
+    if start + len(selected) < len(rows):
+        navigation.append(Button("Далее", f"f:access:{request_id}:{page + 1}"))
+    if navigation:
+        buttons.append(navigation)
+    buttons.append(_file_button("К заявке", f"a:request:resident:{request_id}"))
+    if not selected:
+        return UiReply("У этой заявки пока нет вложений.", buttons)
+    return UiReply(
+        f"Вложения заявки на доступ · страница {page + 1}. "
+        "Нажмите на файл, чтобы получить его в чате.",
+        buttons,
+    )
+
+
+async def get_access_attachment(
+    session: AsyncSession, actor: User, request_id: UUID, file_id: UUID
+) -> UiReply:
+    file, path = await get_file(session, actor, file_id=file_id, root=storage_root())
+    if file.resident_request_id != request_id:
+        raise FileError(404, "file_not_found", "Файл не найден")
+    data = await asyncio.to_thread(_read_private_file, path, file.size_bytes)
+    media = InputMediaBuffer(
+        buffer=data,
+        filename=Path(file.original_name).stem,
+        type=UploadType.FILE,
+    )
+    return UiReply(
+        f"Вложение заявки: {file.original_name}",
+        [
+            _file_button("Другие вложения", f"f:access:{request_id}"),
+            _file_button("К заявке", f"a:request:resident:{request_id}"),
+        ],
+        media=media,
+    )
+
+
 def _safe_max_url(value: str) -> str:
     if (
         len(value) > 4096
@@ -273,6 +329,7 @@ async def _download_and_store(
     kind: str,
     draft_id: UUID | None,
     parent_id: UUID | None,
+    parent_kind: str | None = None,
 ):
     timeout = ClientTimeout(total=40, sock_connect=5, sock_read=15)
     async with ClientSession(
@@ -332,7 +389,7 @@ async def _download_and_store(
                     filename=name,
                     content_type=mime,
                     draft_id=draft_id,
-                    parent_kind="issue_message" if parent_id is not None else None,
+                    parent_kind=parent_kind or ("issue_message" if parent_id is not None else None),
                     parent_id=parent_id,
                 )
         raise FileError(
@@ -356,13 +413,13 @@ async def handle_media_text(
         return None
     destination, separator, comment = argument.partition("|")
     fields = destination.split()
-    if len(fields) != 2 or fields[0] not in {"draft", "card"}:
+    if len(fields) != 2 or fields[0] not in {"draft", "card", "access"}:
         return MediaResult(MEDIA_HELP)
     try:
         destination_id = UUID(fields[1])
     except ValueError as error:
         raise FileError(
-            400, "invalid_destination", "Нужен UUID черновика или карточки"
+            400, "invalid_destination", "Нужен UUID черновика, карточки или заявки"
         ) from error
     if not attachments:
         return MediaResult(
@@ -374,6 +431,7 @@ async def handle_media_text(
     if not isinstance(attachment, (Image, Video, MaxFile)):
         raise FileError(415, "unsupported_type", "Прикрепите фото, PDF или видео")
 
+    parent_kind = None
     if fields[0] == "draft":
         if separator:
             raise FileError(
@@ -386,7 +444,7 @@ async def handle_media_text(
             )
         parent_id = None
         draft_id = destination_id
-    else:
+    elif fields[0] == "card":
         card = await get_visible_card(session, actor, destination_id)
         if card.status == "closed":
             raise FileError(
@@ -400,6 +458,18 @@ async def handle_media_text(
         )
         parent_id = message.id
         draft_id = None
+    else:
+        if separator:
+            raise FileError(
+                400, "invalid_destination",
+                "Пояснение к вложению напишите отдельным сообщением в обсуждении заявки",
+            )
+        await require_file_parent(
+            session, actor, "resident", destination_id, writing=True
+        )
+        parent_id = destination_id
+        parent_kind = "resident"
+        draft_id = None
 
     url, original_name, kind = await _source(attachment, bot=bot)
     try:
@@ -411,6 +481,7 @@ async def handle_media_text(
             kind=kind,
             draft_id=draft_id,
             parent_id=parent_id,
+            parent_kind=parent_kind,
         )
     except (ClientError, TimeoutError) as error:
         raise FileError(
@@ -421,7 +492,11 @@ async def handle_media_text(
         + (
             "При /draft send оно перейдёт в созданную карточку."
             if draft_id is not None
-            else f"Оно добавлено в обсуждение карточки {destination_id}."
+            else (
+                f"Оно прикреплено к заявке на доступ {destination_id}."
+                if parent_kind == "resident"
+                else f"Оно добавлено в обсуждение карточки {destination_id}."
+            )
         ),
         storage_key=file.storage_key,
     )

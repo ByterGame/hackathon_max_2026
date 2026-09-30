@@ -5,7 +5,7 @@ import { getAdminItem, type AdminEntity } from "./features/admin/integrations/cl
 import { isDemoMode, issuesClient, type AppSnapshot } from "./features/issues/integrations/client_api";
 import { getAccessRequest, type AccessRequestKind } from "./features/issues/integrations/access_actions_api";
 import { demoResident, type Role } from "./features/issues/types";
-import { listAppNotifications, markAppNotificationRead, type AppNotification, type NotificationAudience } from "./features/notifications/integrations/client_api";
+import { listAppNotifications, markAllAppNotificationsRead, markAppNotificationRead, type AppNotification, type NotificationAudience } from "./features/notifications/integrations/client_api";
 import { NotificationCenter, notificationDestination } from "./features/notifications/ui/NotificationCenter";
 import { getLaunchIssueId } from "./integrations/max/bridge";
 import { AdminHome } from "./pages/AdminHome";
@@ -199,6 +199,20 @@ export function App() {
     setNotifications((current) => current.map((entry) => entry.id === item.id ? { ...entry, read_at: new Date().toISOString() } : entry));
   }
 
+  async function markAllNotifications() {
+    if (!notificationAudience || notificationBusyId !== null) return;
+    setNotificationBusyId("all");
+    setNotificationsError("");
+    try {
+      await markAllAppNotificationsRead(notificationAudience, snapshot);
+      await refreshNotifications();
+    } catch {
+      setNotificationsError("Не удалось отметить все уведомления прочитанными. Повторите позже.");
+    } finally {
+      setNotificationBusyId(null);
+    }
+  }
+
   async function openNotification(item: AppNotification) {
     if (!notificationAudience) return;
     setNotificationBusyId(item.id);
@@ -346,7 +360,7 @@ export function App() {
         {role === "resident" && snapshot && (screen === "home" || screen === "issues") && hasResidentAccess && <ResidentHome view={screen} houses={snapshot.houses} issues={snapshot.issues} grants={snapshot.residentGrants} requests={snapshot.residentRequests} companyRequests={snapshot.companyRequests} houseRequests={snapshot.houseRequests} currentUserId={isDemoMode ? demoResident.id : account?.id ?? ""} selectedHouseId={activeHouseId ?? ""} onSelectHouse={setSelectedHouseId} onHome={openHome} onIssues={openIssues} onNew={() => navigateFromResident("new")} onIssue={(id) => void openIssue(id)} onAccess={() => navigateFromResident("access")} onRegister={() => navigateFromResident("registration")} onRequest={openRequest} onAllRequests={() => openRequest(null)} onNotifications={openNotifications} unreadCount={unreadCount} onChangeRole={isDemoMode ? changeDemoRole : undefined} />}
         {role === "resident" && snapshot && screen === "requests" && <MyRequests residentRequests={snapshot.residentRequests} companyRequests={snapshot.companyRequests} houseRequests={snapshot.houseRequests} initialCase={selectedRequest} onBack={returnToResident} onChanged={() => refresh("resident")} />}
         {role === "employee" && snapshot && screen === "home" && <EmployeeHome houses={snapshot.houses} issues={snapshot.issues} onIssue={(id) => void openIssue(id)} onAccess={() => navigate("employee-access")} onNotifications={openNotifications} unreadCount={unreadCount} onChangeRole={isDemoMode ? changeDemoRole : undefined} />}
-        {notificationAudience && screen === "notifications" && <NotificationCenter role={notificationAudience} snapshot={snapshot} items={notifications} loading={notificationsLoading} error={notificationsError} busyId={notificationBusyId} onBack={() => navigate(notificationsReturnScreen)} onRefresh={() => void refreshNotifications()} onOpen={(item) => void openNotification(item)} onMarkRead={(item) => void markNotification(item).catch(() => setNotificationsError("Не удалось отметить уведомление прочитанным. Повторите позже."))} />}
+        {notificationAudience && screen === "notifications" && <NotificationCenter role={notificationAudience} snapshot={snapshot} items={notifications} loading={notificationsLoading} error={notificationsError} busyId={notificationBusyId} onBack={() => navigate(notificationsReturnScreen)} onRefresh={() => void refreshNotifications()} onMarkAll={() => void markAllNotifications()} onOpen={(item) => void openNotification(item)} onMarkRead={(item) => void markNotification(item).catch(() => setNotificationsError("Не удалось отметить уведомление прочитанным. Повторите позже."))} />}
         {role && snapshot && screen === "notification-request" && notificationRequest && <div className="page page--form"><ScreenHeader title="Заявка" subtitle="Статус и обсуждение" onBack={() => navigate("notifications")} /><AccessCasePanel kind={notificationRequest.kind} id={notificationRequest.id} perspective={role === "employee" && notificationRequest.kind === "resident" ? "staff" : "applicant"} canManage={role === "employee" && notificationRequest.kind === "resident" && canManageNotifiedRequest} onChanged={() => refresh(role)} /></div>}
         {role === "resident" && snapshot && screen === "new" && residentHouse && <IssueComposer house={residentHouse} grants={activeGrants.filter((item) => item.houseId === residentHouse.id)} categories={snapshot.categories} onBack={returnToResident} onOpenIssue={(id) => void openIssue(id)} />}
         {role === "resident" && snapshot && screen === "access" && <AccessRequest houses={snapshot.houses} requests={snapshot.residentRequests} offers={snapshot.residentOffers} initialName={isDemoMode ? demoResident.name : account?.full_name_confirmed ? account.full_name ?? undefined : undefined} nameConfirmed={isDemoMode || Boolean(account?.full_name_confirmed)} onBack={returnToResident} onChanged={() => refresh("resident")} onAccountChanged={refreshAccount} onOpenRequest={(id) => openRequest({ kind: "resident", id })} />}

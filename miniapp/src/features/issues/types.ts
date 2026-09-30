@@ -49,6 +49,13 @@ export interface IssueEvent {
   createdAt: string;
 }
 
+export interface IssueSupporter {
+  userId: string;
+  displayName: string;
+  phoneNumber?: string;
+  supportedAt: string;
+}
+
 export interface Issue {
   id: string;
   version?: number;
@@ -63,6 +70,7 @@ export interface Issue {
   currentNote?: string;
   authorId: string;
   supportsCount: number;
+  supporters?: IssueSupporter[];
   supportedByMe: boolean;
   botMuted: boolean;
   createdAt: string;
@@ -141,6 +149,7 @@ export interface StaffRights {
 
 export interface StaffAssignment {
   id: string;
+  userId?: string;
   companyId?: string;
   phone: string;
   fullName?: string;
@@ -169,6 +178,7 @@ export interface ResidentOffer {
   phone: string;
   entrance?: number;
   apartment: number;
+  validUntil?: string;
   status: "pending" | "accepted" | "declined" | "cancelled";
   createdAt: string;
 }

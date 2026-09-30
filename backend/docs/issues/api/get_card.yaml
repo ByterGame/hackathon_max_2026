@@ -15,7 +15,7 @@ responses:
 schemas:
   Response200:
     type: object
-    required: [card, targets, reports, messages, history]
+    required: [card, targets, reports, messages, history, supporters]
     properties:
       card: {$ref: '../internal/issue_data.yaml#/schemas/Card'}
       targets:
@@ -30,3 +30,15 @@ schemas:
       history:
         type: array
         items: {$ref: '../internal/issue_data.yaml#/schemas/HistoryEvent'}
+      supporters:
+        type: array
+        description: Состав поддержавших виден только сотрудникам УК и администратору; жильцам возвращается пустой список.
+        items: {$ref: '#/schemas/Supporter'}
+  Supporter:
+    type: object
+    required: [user_id, display_name, supported_at]
+    properties:
+      user_id: {type: string, format: uuid}
+      display_name: {type: string}
+      phone_number: {type: string}
+      supported_at: {type: string, format: date-time}

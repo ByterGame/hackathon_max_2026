@@ -1,6 +1,6 @@
 import { requestJson, requestResponse } from "../../../shared/base_http_client";
 
-export type FileParent = "issue_report" | "issue_message" | "company_registration" | "house_addition";
+export type FileParent = "issue_report" | "issue_message" | "company_registration" | "house_addition" | "resident";
 
 export interface PrivateFile {
   id: string;

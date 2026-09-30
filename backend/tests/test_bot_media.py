@@ -161,6 +161,44 @@ class MediaCommandTests(unittest.IsolatedAsyncioTestCase):
         comment.assert_awaited_once_with(None, None, card_id, "Дополнительное фото")
         self.assertEqual(upload.await_args.kwargs["parent_id"], message_id)
 
+    async def test_uploads_to_resident_access_request(self) -> None:
+        request_id = uuid4()
+        attachment = MaxFile(
+            type="file", filename="document.pdf", size=123,
+            payload=OtherAttachmentPayload(url="https://fu.oneme.ru/api/file"),
+        )
+        stored = SimpleNamespace(id=uuid4(), storage_key="d" * 64)
+        with (
+            patch.object(media_text, "require_file_parent", new=AsyncMock()) as parent,
+            patch.object(
+                media_text, "_download_and_store",
+                new=AsyncMock(return_value=stored),
+            ) as upload,
+        ):
+            result = await media_text.handle_media_text(
+                None, None, f"/file access {request_id}", [attachment], bot=None
+            )
+        parent.assert_awaited_once_with(None, None, "resident", request_id, writing=True)
+        self.assertEqual(upload.await_args.kwargs["parent_kind"], "resident")
+        self.assertEqual(upload.await_args.kwargs["parent_id"], request_id)
+        self.assertEqual(result.storage_key, stored.storage_key)
+
+    async def test_access_file_caption_is_rejected_before_upload(self) -> None:
+        request_id = uuid4()
+        attachment = MaxFile(
+            type="file", filename="document.pdf", size=123,
+            payload=OtherAttachmentPayload(url="https://fu.oneme.ru/api/file"),
+        )
+        with patch.object(media_text, "_download_and_store", new=AsyncMock()) as upload:
+            with self.assertRaises(FileError) as caught:
+                await media_text.handle_media_text(
+                    None, None,
+                    f"/file access {request_id} | подпись",
+                    [attachment], bot=None,
+                )
+        self.assertEqual(caught.exception.code, "invalid_destination")
+        upload.assert_not_awaited()
+
 
 class CardAttachmentTests(unittest.IsolatedAsyncioTestCase):
     def test_private_file_reader_rejects_changed_size_and_symlink(self):
@@ -317,6 +355,68 @@ class CardAttachmentTests(unittest.IsolatedAsyncioTestCase):
                 )
         get_file.assert_not_awaited()
         read.assert_not_called()
+
+
+class AccessAttachmentTests(unittest.IsolatedAsyncioTestCase):
+    async def test_list_uses_current_access_and_shows_file_buttons(self) -> None:
+        request_id = uuid4()
+        file = SimpleNamespace(id=uuid4(), original_name="document.pdf")
+        with patch.object(
+            media_text,
+            "list_files",
+            new=AsyncMock(return_value=[file]),
+        ) as listing:
+            reply = await media_text.list_access_attachments(
+                None, None, request_id
+            )
+        listing.assert_awaited_once_with(
+            None, None, parent_kind="resident", parent_id=request_id
+        )
+        payloads = [button.payload for row in reply.buttons for button in row]
+        self.assertIn(f"f:access_get:{request_id}:{file.id}", payloads)
+        self.assertIn(f"a:request:resident:{request_id}", payloads)
+
+    async def test_foreign_access_file_cannot_read_bytes(self) -> None:
+        request_id, file_id = uuid4(), uuid4()
+        file = SimpleNamespace(
+            resident_request_id=uuid4(), original_name="document.pdf", size_bytes=4,
+        )
+        with (
+            patch.object(
+                media_text, "get_file",
+                new=AsyncMock(return_value=(file, Path("/private/file"))),
+            ),
+            patch.object(media_text, "storage_root", return_value=Path("/private")),
+            patch.object(media_text, "_read_private_file") as read,
+        ):
+            with self.assertRaises(FileError) as caught:
+                await media_text.get_access_attachment(
+                    None, None, request_id, file_id
+                )
+        self.assertEqual(caught.exception.status_code, 404)
+        read.assert_not_called()
+
+    async def test_access_file_is_sent_after_authorized_lookup(self) -> None:
+        request_id, file_id = uuid4(), uuid4()
+        file = SimpleNamespace(
+            resident_request_id=request_id,
+            original_name="document.pdf", size_bytes=4,
+        )
+        with (
+            patch.object(
+                media_text, "get_file",
+                new=AsyncMock(return_value=(file, Path("/private/file"))),
+            ) as lookup,
+            patch.object(media_text, "storage_root", return_value=Path("/private")),
+            patch.object(media_text, "_read_private_file", return_value=b"%PDF") as read,
+        ):
+            reply = await media_text.get_access_attachment(
+                None, None, request_id, file_id
+            )
+        lookup.assert_awaited_once()
+        read.assert_called_once_with(Path("/private/file"), 4)
+        self.assertIsInstance(reply.media, InputMediaBuffer)
+        self.assertEqual(reply.media.buffer, b"%PDF")
 
 
 class MediaDownloadTests(unittest.IsolatedAsyncioTestCase):

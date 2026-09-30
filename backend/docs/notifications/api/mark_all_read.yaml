@@ -1,0 +1,15 @@
+path: /notifications/mark_all_read
+method: post
+summary: Отметить все мои уведомления прочитанными
+responses:
+  '200':
+    description: Все непрочитанные уведомления пользователя отмечены прочитанными.
+    content:
+      application/json:
+        schema: {$ref: '#/schemas/Response200'}
+schemas:
+  Response200:
+    type: object
+    required: [marked]
+    properties:
+      marked: {type: integer, minimum: 0}

@@ -18,14 +18,15 @@ class File(Base):
         CheckConstraint(
             "state <> 'staged' OR (draft_id IS NOT NULL AND issue_report_id IS NULL "
             "AND issue_message_id IS NULL AND company_registration_request_id IS NULL "
-            "AND house_addition_request_id IS NULL)",
+            "AND house_addition_request_id IS NULL AND resident_request_id IS NULL)",
             name="staged_has_only_draft",
         ),
         CheckConstraint(
             "state <> 'ready' OR (draft_id IS NULL AND "
             "((issue_report_id IS NOT NULL)::integer + (issue_message_id IS NOT NULL)::integer + "
             "(company_registration_request_id IS NOT NULL)::integer + "
-            "(house_addition_request_id IS NOT NULL)::integer) = 1)",
+            "(house_addition_request_id IS NOT NULL)::integer + "
+            "(resident_request_id IS NOT NULL)::integer) = 1)",
             name="ready_has_one_parent",
         ),
         {"schema": "system"},
@@ -42,6 +43,9 @@ class File(Base):
     )
     house_addition_request_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("access.house_addition_requests.id")
+    )
+    resident_request_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("access.resident_requests.id")
     )
     original_name: Mapped[str] = mapped_column(Text, nullable=False)
     mime_type: Mapped[str] = mapped_column(Text, nullable=False)

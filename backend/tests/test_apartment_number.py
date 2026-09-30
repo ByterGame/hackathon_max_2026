@@ -164,7 +164,7 @@ class ApartmentLookupTests(unittest.IsolatedAsyncioTestCase):
         )
         session = SimpleNamespace(scalar=AsyncMock(side_effect=[None, apartment]))
         found = await access_apartment(
-            session, SimpleNamespace(id=house_id), 17, 2
+            session, SimpleNamespace(id=house_id, entrance_count=4, apartment_count=80), 17, 2
         )
         self.assertIs(found, apartment)
         self.assertEqual(apartment.entrance_number, 2)
@@ -176,7 +176,9 @@ class ApartmentLookupTests(unittest.IsolatedAsyncioTestCase):
         )
         session = SimpleNamespace(scalar=AsyncMock(side_effect=[None, apartment]))
         with self.assertRaises(AccessRuleError) as error:
-            await access_apartment(session, SimpleNamespace(id=house_id), 17, 2)
+            await access_apartment(
+                session, SimpleNamespace(id=house_id, entrance_count=4, apartment_count=80), 17, 2
+            )
         self.assertEqual(error.exception.code, "apartment_entrance_conflict")
         self.assertEqual(apartment.entrance_number, 1)
 

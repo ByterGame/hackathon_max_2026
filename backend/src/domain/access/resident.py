@@ -41,6 +41,23 @@ from src.domain.profile import (
 )
 
 
+def _validate_apartment_location(
+    house: House, apartment_number: int, entrance_number: int | None
+) -> None:
+    if entrance_number is None or entrance_number <= 0 or apartment_number <= 0:
+        raise AccessRuleError(
+            400,
+            "invalid_apartment",
+            "Укажите положительные номера подъезда и квартиры",
+        )
+    if house.entrance_count is not None and entrance_number > house.entrance_count:
+        raise AccessRuleError(400, "invalid_entrance", "Такого подъезда нет в доме")
+    # Apartment numbering is continuous across entrances. An unknown total
+    # must not prevent existing houses from accepting residents.
+    if house.apartment_count is not None and apartment_number > house.apartment_count:
+        raise AccessRuleError(400, "invalid_apartment", "Такой квартиры нет в доме")
+
+
 async def create_resident_request(
     session: AsyncSession,
     actor: User,
@@ -52,21 +69,10 @@ async def create_resident_request(
 ) -> ResidentRequest:
     require_verified_phone(actor)
     require_user_kind(actor, {"unassigned", "resident"})
-    if entrance_number is None or entrance_number <= 0 or apartment_number <= 0:
-        raise AccessRuleError(
-            400,
-            "invalid_apartment",
-            "Укажите положительные номера подъезда и квартиры",
-        )
     house = await require_row(session, House, house_id)
     if house.archived_at is not None:
         raise AccessRuleError(409, "house_unavailable", "Дом не подключён")
-    if (
-        entrance_number is not None
-        and house.entrance_count is not None
-        and entrance_number > house.entrance_count
-    ):
-        raise AccessRuleError(400, "invalid_entrance", "Такого подъезда нет в доме")
+    _validate_apartment_location(house, apartment_number, entrance_number)
     name = await resolve_request_full_name(session, actor, full_name)
     existing = await session.scalar(
         select(ResidentRequest)
@@ -119,19 +125,8 @@ async def update_resident_request(
     if request.applicant_user_id != actor.id:
         raise AccessRuleError(403, "forbidden", "Можно исправить только свою заявку")
     require_open_request(request.status)
-    if entrance_number is None or entrance_number <= 0 or apartment_number <= 0:
-        raise AccessRuleError(
-            400,
-            "invalid_apartment",
-            "Укажите положительные номера подъезда и квартиры",
-        )
     house = await require_row(session, House, request.house_id)
-    if (
-        entrance_number is not None
-        and house.entrance_count is not None
-        and entrance_number > house.entrance_count
-    ):
-        raise AccessRuleError(400, "invalid_entrance", "Такого подъезда нет в доме")
+    _validate_apartment_location(house, apartment_number, entrance_number)
     if full_name is not None:
         name = normalize_full_name(full_name)
         if not has_confirmed_full_name(actor) or name != actor.full_name:
@@ -193,6 +188,7 @@ async def _get_or_create_apartment(
     entrance_number: int | None,
 ) -> Apartment:
     """Resolve by house and apartment number; only an approved access flow may set the entrance."""
+    _validate_apartment_location(house, apartment_number, entrance_number)
     proposed_id = uuid4()
     created_id = await session.scalar(
         insert(Apartment)
@@ -307,18 +303,7 @@ async def create_resident_offer(
     require_future_expiry(valid_to)
     house = await require_row(session, House, house_id)
     await require_staff(session, actor, house.company_id, "can_manage_residents")
-    if entrance_number is None or entrance_number <= 0 or apartment_number <= 0:
-        raise AccessRuleError(
-            400,
-            "invalid_apartment",
-            "Укажите положительные номера подъезда и квартиры",
-        )
-    if (
-        entrance_number is not None
-        and house.entrance_count is not None
-        and entrance_number > house.entrance_count
-    ):
-        raise AccessRuleError(400, "invalid_entrance", "Такого подъезда нет в доме")
+    _validate_apartment_location(house, apartment_number, entrance_number)
     apartment = await _get_or_create_apartment(
         session, house, apartment_number, entrance_number
     )

@@ -28,6 +28,7 @@ from src.domain.access import company, queries, requests, resident, staff
 from src.domain.access.common import require_staff, require_support
 from src.domain.access.rules import normalize_phone
 from src.domain.drafts.service import get_draft, list_drafts, mark_submitted, save_draft
+from src.domain.files.service import _parent as require_file_parent
 from src.domain.notifications.service import is_muted, set_mute
 from src.domain.profile import has_confirmed_full_name, normalize_full_name, update_profile_name
 
@@ -232,6 +233,10 @@ async def _request_detail(
     buttons.append(
         _button("Читать обсуждение", f"a:req_discussion:{kind}:{request_id}:1")
     )
+    if kind == "resident":
+        buttons.append(_button("Вложения", f"f:access:{request_id}"))
+        if active and can_write:
+            buttons.append(_button("Прикрепить файл", f"a:req_file:{request_id}"))
     if (
         kind == "house_addition"
         and item.get("resolved_house_id")
@@ -986,6 +991,22 @@ async def handle_action(
             data={"kind": kind, "request_id": str(request_id)},
         )
         return UiReply("Напишите сообщение для обсуждения заявки одним сообщением.")
+    if action == "req_file" and len(parts) == 3:
+        request_id = _uuid(parts[2])
+        await require_file_parent(
+            session, actor, "resident", request_id, writing=True
+        )
+        await set_dialog(
+            session,
+            actor.id,
+            flow_kind="access_file",
+            step="upload",
+            data={"request_id": str(request_id)},
+        )
+        return UiReply(
+            "Отправьте одним сообщением фото, PDF или видео без подписи (до 8 МиБ). "
+            "Пояснение можно написать отдельно в обсуждении заявки."
+        )
     if action == "req_edit" and len(parts) == 3:
         request_id = _uuid(parts[2])
         item = await queries.get_request(

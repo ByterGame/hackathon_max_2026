@@ -28,6 +28,7 @@ PARENT_FIELDS = {
     "issue_message": "issue_message_id",
     "company_registration": "company_registration_request_id",
     "house_addition": "house_addition_request_id",
+    "resident": "resident_request_id",
 }
 
 
@@ -96,7 +97,7 @@ async def _parent(
             if card.status == "closed":
                 raise FileError(409, "issue_closed", "В закрытую заявку нельзя добавить файл")
         return parent, card.id
-    request_kind = "company_registration" if kind == "company_registration" else "house_addition"
+    request_kind = kind
     try:
         parent = await load_request(session, kind=request_kind, request_id=parent_id)
         await require_request_party(
@@ -116,11 +117,11 @@ def file_data(file: File) -> dict[str, object]:
         "id": str(file.id),
         "draft_id": str(file.draft_id) if file.draft_id is not None else None,
         "parent_kind": next(
-            (kind for kind, field in PARENT_FIELDS.items() if getattr(file, field) is not None),
+            (kind for kind, field in PARENT_FIELDS.items() if getattr(file, field, None) is not None),
             None,
         ),
         "parent_id": next(
-            (str(getattr(file, field)) for field in PARENT_FIELDS.values() if getattr(file, field) is not None),
+            (str(getattr(file, field)) for field in PARENT_FIELDS.values() if getattr(file, field, None) is not None),
             None,
         ),
         "original_name": file.original_name,
@@ -281,7 +282,7 @@ async def get_file(
         await _draft(session, actor, file.draft_id)
     elif file.state == "ready":
         parent = next(
-            ((kind, getattr(file, field)) for kind, field in PARENT_FIELDS.items() if getattr(file, field) is not None),
+            ((kind, getattr(file, field)) for kind, field in PARENT_FIELDS.items() if getattr(file, field, None) is not None),
             None,
         )
         if parent is None:

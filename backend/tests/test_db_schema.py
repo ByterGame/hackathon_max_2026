@@ -1,9 +1,14 @@
 import unittest
+from importlib import import_module
+from io import StringIO
+from unittest.mock import patch
 
+from alembic.operations import Operations
+from alembic.runtime.migration import MigrationContext
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.schema import CreateIndex
 
-from src.db.models import AdminOperation, Apartment, Base, BotDialog, ResidentRequest, SupportInvitation, User
+from src.db.models import AdminOperation, Apartment, Base, BotDialog, File, ResidentRequest, SupportInvitation, User
 
 
 class DatabaseSchemaTests(unittest.TestCase):
@@ -89,6 +94,48 @@ class DatabaseSchemaTests(unittest.TestCase):
         column = User.__table__.c.full_name_confirmed_at
         self.assertTrue(column.nullable)
         self.assertIsNone(column.server_default)
+
+    def test_resident_request_files_are_a_single_private_parent(self):
+        table = File.__table__
+        self.assertTrue(table.c.resident_request_id.nullable)
+        self.assertIn(
+            "access.resident_requests.id",
+            {key.target_fullname for key in table.foreign_keys},
+        )
+        ready = next(
+            constraint for constraint in table.constraints
+            if constraint.name == "ck_files_ready_has_one_parent"
+        )
+        staged = next(
+            constraint for constraint in table.constraints
+            if constraint.name == "ck_files_staged_has_only_draft"
+        )
+        self.assertIn("resident_request_id IS NOT NULL", str(ready.sqltext))
+        self.assertIn("resident_request_id IS NULL", str(staged.sqltext))
+
+    def test_resident_file_migration_preserves_check_constraint_names(self):
+        migration = import_module(
+            "src.db.migrations.versions.20260930_010_resident_request_files"
+        )
+        for direction in ("upgrade", "downgrade"):
+            with self.subTest(direction=direction):
+                output = StringIO()
+                context = MigrationContext.configure(
+                    dialect_name="postgresql",
+                    opts={
+                        "as_sql": True,
+                        "output_buffer": output,
+                        "target_metadata": Base.metadata,
+                    },
+                )
+                operations = Operations(context)
+                with patch.object(migration, "op", operations):
+                    getattr(migration, direction)()
+                sql = output.getvalue()
+                self.assertIn("ck_files_ready_has_one_parent", sql)
+                self.assertIn("ck_files_staged_has_only_draft", sql)
+                self.assertIn("resident_request_id", sql)
+                self.assertNotIn("ck_files_ck_files", sql)
 
 
 if __name__ == "__main__":

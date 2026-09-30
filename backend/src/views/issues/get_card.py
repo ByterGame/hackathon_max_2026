@@ -1,13 +1,14 @@
 """Read one issue with reports and discussion."""
 
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import Depends, Query, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.common.auth import get_current_user
-from src.db.models import Apartment, AuditEvent, IssueMessage, IssueReport, IssueTarget, User
+from src.db.models import Apartment, AuditEvent, IssueMessage, IssueReport, IssueSupport, IssueTarget, User
 from src.db.session import get_session
 from src.domain.issues.service import IssueError, get_visible_card, merged_card_ids
 from src.gen.issues.api import get_card as models
@@ -19,6 +20,30 @@ from ._presenters import (
     report_model,
     target_model,
 )
+
+
+async def _supporters(
+    session: AsyncSession, actor: User, card_id: UUID,
+) -> list[models.Supporter]:
+    if actor.kind not in {"employee", "admin"}:
+        return []
+    rows = (
+        await session.execute(
+            select(IssueSupport, User)
+            .join(User, User.id == IssueSupport.user_id)
+            .where(IssueSupport.card_id == card_id)
+            .order_by(IssueSupport.supported_at, User.id)
+        )
+    ).all()
+    return [
+        models.Supporter(
+            user_id=user.id,
+            display_name=user.full_name or user.max_display_name or "Жилец дома",
+            phone_number=user.phone_number,
+            supported_at=support.supported_at,
+        )
+        for support, user in rows
+    ]
 
 
 async def get_card(
@@ -68,4 +93,5 @@ async def get_card(
         reports=[report_model(item) for item in reports],
         messages=[message_model(item) for item in messages],
         history=[history_model(item) for item in history],
+        supporters=await _supporters(session, actor, card.id),
     )

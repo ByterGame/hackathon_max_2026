@@ -1483,6 +1483,36 @@ router.add_api_route(
     },
 )
 
+_handler = import_module('src.views.notifications.mark_all_read')
+_models = import_module('src.gen.notifications.api.mark_all_read')
+_RESPONSE_CODES_NOTIFICATIONS_MARK_ALL_READ = {
+    _models.Response200: 200,
+}
+router.add_api_route(
+    path='/notifications/mark_all_read',
+    endpoint=_with_response_codes(
+        _handler.mark_all_read,
+        _RESPONSE_CODES_NOTIFICATIONS_MARK_ALL_READ,
+    ),
+    methods=['POST'],
+    dependencies=[Depends(reserve_http_command)] if needs_http_idempotency(
+        '/notifications/mark_all_read', 'POST'
+    ) else [],
+    operation_id='notifications_mark_all_read',
+    summary='Отметить все мои уведомления прочитанными',
+    description=None,
+    tags=['notifications'],
+    deprecated=False,
+    status_code=200,
+    response_model=_models.Response200,
+    responses={
+        200: {
+            "description": 'Все непрочитанные уведомления пользователя отмечены прочитанными.',
+            "model": _models.Response200,
+        },
+    },
+)
+
 _handler = import_module('src.views.notifications.mark_read')
 _models = import_module('src.gen.notifications.api.mark_read')
 _RESPONSE_CODES_NOTIFICATIONS_MARK_READ = {

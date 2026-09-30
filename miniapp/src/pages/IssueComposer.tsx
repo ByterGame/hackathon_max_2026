@@ -21,11 +21,13 @@ export function IssueComposer({ house, grants, categories, onBack, onOpenIssue }
   const [title, setTitle] = useState("");
   const [scopeLevel, setScopeLevel] = useState<IssueScopeLevel | null>(null);
   const [selectedApartmentId, setSelectedApartmentId] = useState("");
+  const [selectedEntrance, setSelectedEntrance] = useState("");
   const [similar, setSimilar] = useState<Issue[]>([]);
   const [suggestionSource, setSuggestionSource] = useState<"gigachat" | "local" | null>(null);
   const [suggestedTitle, setSuggestedTitle] = useState("");
   const [descriptionCheck, setDescriptionCheck] = useState<"ok" | "warning" | "not_checked">("not_checked");
   const [descriptionWarning, setDescriptionWarning] = useState<string | null>(null);
+  const [summaryFallback, setSummaryFallback] = useState(false);
   const [draft, setDraft] = useState<CreateIssueInput | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -45,9 +47,15 @@ export function IssueComposer({ house, grants, categories, onBack, onOpenIssue }
   const submissionTargetRef = useRef<SubmissionTarget | null>(null);
   const submissionBusyRef = useRef(false);
   const editedByUser = useRef(false);
-  const ownGrant = grants.length === 1
-    ? grants[0]
-    : grants.find((item) => item.apartmentId === selectedApartmentId);
+  const manuallyEditedTitleForDescription = useRef<string | null>(null);
+  const manuallyEditedSummaryForDescription = useRef<string | null>(null);
+  const entrances = [...new Set(grants.flatMap((item) => item.entrance == null ? [] : [item.entrance]))].sort((left, right) => left - right);
+  const entrance = entrances.length === 1 ? entrances[0] : Number(selectedEntrance);
+  const ownGrant = scopeLevel === "apartment"
+    ? grants.length === 1 ? grants[0] : grants.find((item) => item.apartmentId === selectedApartmentId)
+    : scopeLevel === "entrance"
+      ? grants.find((item) => item.entrance === entrance)
+      : undefined;
   const imageFileCount = files.filter((file) => file.type.startsWith("image/")).length;
   const videoFileCount = files.filter((file) => file.type.startsWith("video/")).length;
 
@@ -101,7 +109,9 @@ export function IssueComposer({ house, grants, categories, onBack, onOpenIssue }
       setSummaryDescription(typeof payload.summary_description === "string" ? payload.summary_description : "");
       const savedScope = payload.scope;
       setScopeLevel(savedScope === "apartment" || savedScope === "entrance" || savedScope === "house" ? savedScope : payload.scope_all_house === true ? "house" : null);
-      setSelectedApartmentId(typeof payload.apartment_id === "string" && grants.some((item) => item.apartmentId === payload.apartment_id) ? payload.apartment_id : "");
+      const savedGrant = typeof payload.apartment_id === "string" ? grants.find((item) => item.apartmentId === payload.apartment_id) : undefined;
+      setSelectedApartmentId(savedGrant?.apartmentId ?? "");
+      setSelectedEntrance(savedGrant?.entrance?.toString() ?? "");
       setDraftNotice(savedScope === undefined && payload.scope_all_house !== true
         ? "Черновик восстановлен. Раньше в нём можно было указать произвольные квартиры; выберите область проблемы заново."
         : "Восстановлен общий черновик MAX и бота.");
@@ -142,15 +152,18 @@ export function IssueComposer({ house, grants, categories, onBack, onOpenIssue }
     event.preventDefault();
     if (!category) { setError("Выберите категорию проблемы"); return; }
     if (!scopeLevel) { setError("Выберите, где возникла проблема: в квартире, подъезде или доме"); return; }
-    if (scopeLevel !== "house" && !ownGrant) { setError("Выберите свою квартиру из списка подтверждённых"); return; }
-    if (scopeLevel === "entrance" && !ownGrant?.entrance) { setError("В вашем доступе не указан подъезд. Уточните его у УК."); return; }
-    const proposedTitle = title.trim() || description.trim().split(/[.!?\n]/)[0].slice(0, 100);
+    if (scopeLevel === "apartment" && !ownGrant) { setError("Выберите свою квартиру из списка подтверждённых"); return; }
+    if (scopeLevel === "entrance" && entrances.length === 0) { setError("В вашем доступе не указан подъезд. Уточните его у УК."); return; }
+    if (scopeLevel === "entrance" && !ownGrant) { setError("Выберите свой подъезд из списка подтверждённых"); return; }
+    const normalizedDescription = description.trim();
+    const manualTitle = manuallyEditedTitleForDescription.current === normalizedDescription ? title.trim() : "";
+    const proposedTitle = manualTitle || normalizedDescription.split(/[.!?\n]/)[0].slice(0, 100);
     if (!proposedTitle) { setError("Опишите проблему"); return; }
     const input: CreateIssueInput = {
       houseId: house.id,
       title: proposedTitle,
       category,
-      description: description.trim(),
+      description: normalizedDescription,
       scopeLevel,
       apartmentId: scopeLevel === "house" ? undefined : ownGrant?.apartmentId,
       scope: scopeLevel === "house"
@@ -164,15 +177,21 @@ export function IssueComposer({ house, grants, categories, onBack, onOpenIssue }
     setError("");
     try {
       const suggestion = await issuesClient.suggestIssue(input);
+      const suggestedSummary = suggestion.summaryDescription?.trim() ?? "";
+      const usableSuggestedSummary = suggestedSummary.length >= 8 && suggestedSummary.split(/\s+/).length >= 2;
+      const manualSummary = manuallyEditedSummaryForDescription.current === normalizedDescription ? summaryDescription.trim() : "";
+      const nextSummary = manualSummary || (usableSuggestedSummary ? suggestedSummary : input.description);
+      const nextTitle = manualTitle || suggestion.suggestedTitle.trim() || proposedTitle;
       setSimilar(suggestion.similarIssues);
       setSuggestionSource(suggestion.source);
       setSuggestedTitle(suggestion.suggestedTitle);
-      setSummaryDescription(suggestion.summaryDescription ?? input.description);
+      setSummaryDescription(nextSummary);
+      setSummaryFallback(suggestion.source === "gigachat" && !manualSummary && !usableSuggestedSummary);
       setDescriptionCheck(suggestion.descriptionCheck);
       setDescriptionWarning(suggestion.descriptionWarning);
-      setTitle(title.trim() || suggestion.suggestedTitle || proposedTitle);
+      setTitle(nextTitle);
       if (!isDemoMode) {
-        try { await persistDraft({ ...draftPayload(), title: title.trim() || suggestion.suggestedTitle || proposedTitle, summary_description: suggestion.summaryDescription ?? input.description }); }
+        try { await persistDraft({ ...draftPayload(), title: nextTitle, summary_description: nextSummary }); }
         catch (reason) { setDraftNotice(`Черновик не сохранён: ${reason instanceof Error ? reason.message : "ошибка сервера"}`); }
       }
       setStep(2);
@@ -324,7 +343,7 @@ export function IssueComposer({ house, grants, categories, onBack, onOpenIssue }
         </section>
         <section className="issue-composer__section" aria-labelledby="issue-description-title">
           <h2 id="issue-description-title">Опишите проблему</h2>
-          <label className="field issue-composer__description"><span className="issue-composer__sr-only">Описание проблемы</span><textarea required maxLength={1500} value={description} onChange={(event) => { setDescription(event.target.value); setSummaryDescription(""); }} placeholder="Например: лифт в подъезде №2 не реагирует на вызов..." rows={5} /><small>{description.length}/1500</small></label>
+          <label className="field issue-composer__description"><span className="issue-composer__sr-only">Описание проблемы</span><textarea required maxLength={1500} value={description} onChange={(event) => { setDescription(event.target.value); setTitle(""); setSummaryDescription(""); manuallyEditedTitleForDescription.current = null; manuallyEditedSummaryForDescription.current = null; setSummaryFallback(false); }} placeholder="Например: лифт в подъезде №2 не реагирует на вызов..." rows={5} /><small>{description.length}/1500</small></label>
         </section>
         <section className="issue-composer__section" aria-labelledby="issue-scope-title">
           <h2 id="issue-scope-title">Область</h2>
@@ -336,8 +355,9 @@ export function IssueComposer({ house, grants, categories, onBack, onOpenIssue }
             ] as const).map(([value, label, hint]) => <button key={value} type="button" className={`issue-composer__chip${scopeLevel === value ? " issue-composer__chip--selected" : ""}`} aria-label={`${label}: ${hint}`} title={hint} aria-pressed={scopeLevel === value} onClick={() => { editedByUser.current = true; setScopeLevel(value); setError(""); }}>{label}</button>)}
           </div>
           {scopeLevel === "apartment" && <p className="field-help">Эту проблему увидите только вы и УК.</p>}
-          {scopeLevel && scopeLevel !== "house" && grants.length > 1 && <label className="field"><span>Какая из ваших квартир?</span><select required value={selectedApartmentId} onChange={(event) => { editedByUser.current = true; setSelectedApartmentId(event.target.value); }}><option value="">Выберите подтверждённую квартиру</option>{grants.map((item) => <option key={item.id} value={item.apartmentId ?? ""}>Квартира {item.apartment}{item.entrance ? ` · подъезд ${item.entrance}` : ""}</option>)}</select></label>}
-          {scopeLevel === "entrance" && ownGrant && !ownGrant.entrance && <p className="form-warning">Подъезд не указан в вашем доступе. Обратитесь в УК или выберите область «весь дом».</p>}
+          {scopeLevel === "apartment" && grants.length > 1 && <label className="field"><span>Какая из ваших квартир?</span><select required value={selectedApartmentId} onChange={(event) => { editedByUser.current = true; setSelectedApartmentId(event.target.value); }}><option value="">Выберите подтверждённую квартиру</option>{grants.map((item) => <option key={item.id} value={item.apartmentId ?? ""}>Квартира {item.apartment}{item.entrance ? ` · подъезд ${item.entrance}` : ""}</option>)}</select></label>}
+          {scopeLevel === "entrance" && entrances.length > 1 && <label className="field"><span>В каком из ваших подъездов?</span><select required value={selectedEntrance} onChange={(event) => { editedByUser.current = true; setSelectedEntrance(event.target.value); }}><option value="">Выберите подтверждённый подъезд</option>{entrances.map((item) => <option key={item} value={item}>Подъезд №{item}</option>)}</select></label>}
+          {scopeLevel === "entrance" && entrances.length === 0 && <p className="form-warning">Подъезд не указан в вашем доступе. Обратитесь в УК или выберите область «весь дом».</p>}
         </section>
         <section className="issue-composer__section issue-composer__media" aria-labelledby="issue-media-title">
           <h2 id="issue-media-title">Фото, видео и материалы</h2>
@@ -364,21 +384,22 @@ export function IssueComposer({ house, grants, categories, onBack, onOpenIssue }
           <p className="issue-composer__summary-text">{summaryDescription}</p>
           {!submissionTarget && <details className="issue-composer__optional issue-composer__edit-summary">
             <summary>Изменить название и сводку</summary>
-            <label className="field"><span>Название проблемы</span><input required value={title} onChange={(event) => setTitle(event.target.value)} maxLength={100} /></label>
-            <label className="field"><span>Сводное описание</span><textarea required value={summaryDescription} onChange={(event) => setSummaryDescription(event.target.value)} maxLength={1500} rows={4} /><small>{summaryDescription.length}/1500</small></label>
+            <label className="field"><span>Название проблемы</span><input required value={title} onChange={(event) => { setTitle(event.target.value); manuallyEditedTitleForDescription.current = draft?.description ?? null; }} maxLength={100} /></label>
+            <label className="field"><span>Сводное описание</span><textarea required value={summaryDescription} onChange={(event) => { setSummaryDescription(event.target.value); manuallyEditedSummaryForDescription.current = draft?.description ?? null; }} maxLength={1500} rows={4} /><small>{summaryDescription.length}/1500</small></label>
             <p className="field-help">Ваш исходный текст: {draft?.description}</p>
           </details>}
         </section>
         {suggestionSource === "local"
           ? <aside className="form-warning issue-composer__check-note" role="status">Нейросеть не использовалась. В сводное описание подставлен ваш исходный текст, а похожие карточки найдены по совпадению слов — смысл текста не проверен. При необходимости исправьте формулировку.</aside>
           : descriptionCheck === "warning" && <aside className="form-warning issue-composer__check-note" role="status">{descriptionWarning ?? "Укажите, что случилось и где именно."} Вы можете исправить текст или продолжить.</aside>}
+        {summaryFallback && <aside className="form-warning issue-composer__check-note" role="status">Сводка GigaChat оказалась слишком короткой и не использована. Вместо неё показан ваш исходный текст — при необходимости исправьте его.</aside>}
         {error && <p className="form-error" role="alert">{error}</p>}
         {submissionTarget && <p className="draft-notice issue-composer__submission-note" role="status">{submissionTarget.kind === "create"
           ? createdIssue ? "Карточка уже создана. Если вложения или черновик не завершились, повторите подачу; поддержка другой карточки здесь недоступна." : "Создание уже отправлено. Если ответ не пришёл, повторите подачу: тот же запрос не создаст вторую карточку."
           : supportedIssueId ? "Поддержка уже учтена. Если вложения или черновик не завершились, повторите поддержку; новую карточку здесь создавать нельзя." : "Поддержка уже отправлена. Если ответ не пришёл, повторите её для той же карточки."}</p>}
         <div className="issue-composer__decision-actions">
           <button type="button" className="button button--soft" disabled={busy || Boolean(submissionTarget)} onClick={() => setStep(1)}>Исправить</button>
-          <button type="button" className="button button--primary" disabled={busy || !title.trim() || !summaryDescription.trim() || submissionTarget?.kind === "support"} onClick={() => void create()}>{busy ? "Сохраняем…" : createdIssue ? "Завершить подачу" : submissionTarget?.kind === "create" ? "Повторить подачу" : "Всё верно"}</button>
+          <button type="button" className="button button--primary" disabled={busy || !title.trim() || !summaryDescription.trim() || submissionTarget?.kind === "support"} onClick={() => void create()}>{busy ? "Сохраняем…" : createdIssue ? "Завершить подачу" : submissionTarget?.kind === "create" ? "Повторить подачу" : "Создать заявку"}</button>
         </div>
         {similar.length
           ? <div className="issue-composer__similar-list">{similar.map((item, index) => <div className="issue-composer__similar-match" key={item.id}>

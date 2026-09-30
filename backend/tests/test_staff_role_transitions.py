@@ -3,13 +3,13 @@
 import unittest
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 from uuid import uuid4
 
 from sqlalchemy.dialects import postgresql
 
 from src.domain.access.rules import AccessRuleError
-from src.domain.access.staff import revoke_staff
+from src.domain.access.staff import assign_staff, revoke_staff
 
 
 class StaffRevocationTests(unittest.IsolatedAsyncioTestCase):
@@ -185,14 +185,14 @@ class StaffRevocationTests(unittest.IsolatedAsyncioTestCase):
                 await revoke_staff(
                     self.session, self.actor, assignment_id=self.assignment.id
                 )
-        self.assertEqual(caught.exception.code, "last_staff_self_revoke")
+        self.assertEqual(caught.exception.code, "self_staff_change_forbidden")
         self.assertIsNone(self.assignment.revoked_at)
         self.assertTrue(require_row.await_args_list[-1].kwargs["for_update"])
-        self.assertEqual(require_row.await_args_list[-1].args[2], self.assignment.company_id)
+        self.assertEqual(require_row.await_args_list[-1].args[2], self.assignment.id)
         audit.assert_not_called()
         commit.assert_not_awaited()
 
-    async def test_employee_can_revoke_self_when_another_employee_remains(self) -> None:
+    async def test_employee_cannot_revoke_self_when_another_employee_remains(self) -> None:
         self.actor = self.employee
         self.session.scalar.side_effect = [uuid4(), None]
         with (
@@ -205,10 +205,45 @@ class StaffRevocationTests(unittest.IsolatedAsyncioTestCase):
             patch("src.domain.access.staff.audit"),
             patch("src.domain.access.staff.commit_or_conflict", new_callable=AsyncMock) as commit,
         ):
-            await revoke_staff(self.session, self.actor, assignment_id=self.assignment.id)
-        self.assertIsNotNone(self.assignment.revoked_at)
-        self.assertEqual(self.employee.kind, "unassigned")
-        commit.assert_awaited_once_with(self.session)
+            with self.assertRaises(AccessRuleError) as caught:
+                await revoke_staff(self.session, self.actor, assignment_id=self.assignment.id)
+        self.assertEqual(caught.exception.code, "self_staff_change_forbidden")
+        self.assertIsNone(self.assignment.revoked_at)
+        self.assertEqual(self.employee.kind, "employee")
+        commit.assert_not_awaited()
+
+
+class StaffAssignmentTests(unittest.IsolatedAsyncioTestCase):
+    async def test_employee_cannot_change_own_permissions(self) -> None:
+        company_id = uuid4()
+        actor = SimpleNamespace(id=uuid4(), kind="employee")
+        assignment = SimpleNamespace(
+            id=uuid4(), user_id=actor.id, can_manage_staff=True,
+            can_manage_residents=True, can_manage_issues=True, version=1,
+        )
+        session = SimpleNamespace(
+            scalar=AsyncMock(side_effect=[None, None, actor, assignment]),
+            add=Mock(),
+        )
+        with (
+            patch("src.domain.access.staff.require_row", new_callable=AsyncMock),
+            patch("src.domain.access.staff.require_staff", new_callable=AsyncMock),
+            patch("src.domain.access.staff.lock_phone_role", new_callable=AsyncMock),
+            patch("src.domain.access.staff.audit") as audit,
+            patch("src.domain.access.staff.commit_or_conflict", new_callable=AsyncMock) as commit,
+        ):
+            with self.assertRaises(AccessRuleError) as caught:
+                await assign_staff(
+                    session, actor, company_id=company_id,
+                    phone_number="79990000001", can_manage_staff=False,
+                    can_manage_residents=False, can_manage_issues=False,
+                )
+        self.assertEqual(caught.exception.code, "self_staff_change_forbidden")
+        self.assertTrue(assignment.can_manage_staff)
+        self.assertEqual(assignment.version, 1)
+        session.add.assert_not_called()
+        audit.assert_not_called()
+        commit.assert_not_awaited()
 
 
 if __name__ == "__main__":

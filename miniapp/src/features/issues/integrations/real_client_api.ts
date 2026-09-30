@@ -41,6 +41,7 @@ interface WireDetail {
   reports: { id: string; author_user_id: string; raw_description: string; created_at: string }[];
   messages: { id: string; author_user_id: string; kind: "resident_comment" | "official_uk"; body: string; created_at: string }[];
   history: { id: string; action: string; actor_user_id: string; status: IssueStatus | null; note: string | null; created_at: string }[];
+  supporters?: { user_id: string; display_name: string; phone_number: string | null; supported_at: string }[];
 }
 
 interface WireRequest {
@@ -84,6 +85,7 @@ interface WireOffer {
   address_display: string;
   entrance_number: number | null;
   apartment_number: number;
+  proposed_access_until: string | null;
   status: ResidentOffer["status"];
   created_at: string;
 }
@@ -178,6 +180,12 @@ function toIssue(detail: WireDetail, user: CurrentUser): Issue {
     currentNote: card.current_note ?? undefined,
     authorId: card.author_user_id,
     supportsCount: card.support_count,
+    supporters: (detail.supporters ?? []).map((item) => ({
+      userId: item.user_id,
+      displayName: item.display_name,
+      phoneNumber: item.phone_number ?? undefined,
+      supportedAt: item.supported_at,
+    })),
     supportedByMe: Boolean(card.supported_by_me),
     botMuted: false,
     createdAt: card.created_at,
@@ -277,7 +285,7 @@ export const realIssuesClient: IssuesClient = {
       });
       offers = offerResponse.items.map((item) => {
         rememberHouse({ id: item.house_id, address: item.address_display, company: "УК дома" }, houseMap);
-        return { id: item.id, houseId: item.house_id, phone: user.phone_number ?? "", entrance: item.entrance_number ?? undefined, apartment: item.apartment_number, status: item.status, createdAt: item.created_at };
+        return { id: item.id, houseId: item.house_id, phone: user.phone_number ?? "", entrance: item.entrance_number ?? undefined, apartment: item.apartment_number, validUntil: item.proposed_access_until ?? undefined, status: item.status, createdAt: item.created_at };
       });
       residentRequests = residentResponse.items.map(residentRequest);
       for (const item of residentResponse.items) {
@@ -299,9 +307,9 @@ export const realIssuesClient: IssuesClient = {
       }));
       for (const response of responses) {
         for (const item of response.houseResponse.items) rememberHouse({ id: item.id, address: item.address_display, company: response.membership.company_name, companyId: response.membership.company_id, entranceCount: item.entrance_count ?? undefined, apartmentCount: item.apartment_count ?? undefined }, houseMap);
-        staff.push(...response.staffResponse.items.filter((item) => !item.revoked_at).map((item) => ({ id: item.id, companyId: response.membership.company_id, phone: item.phone_number, rights: { manageStaff: item.can_manage_staff, manageResidents: item.can_manage_residents, manageIssues: item.can_manage_issues }, bound: Boolean(item.user_id), createdAt: item.created_at })));
+        staff.push(...response.staffResponse.items.filter((item) => !item.revoked_at).map((item) => ({ id: item.id, userId: item.user_id ?? undefined, companyId: response.membership.company_id, phone: item.phone_number, rights: { manageStaff: item.can_manage_staff, manageResidents: item.can_manage_residents, manageIssues: item.can_manage_issues }, bound: Boolean(item.user_id), createdAt: item.created_at })));
         grants.push(...response.residentResponse.items.map((item) => ({ id: item.grant_id, houseId: item.house_id, fullName: item.full_name ?? "Жилец", phone: item.phone_number ?? "", entrance: item.entrance_number ?? undefined, apartment: item.apartment_number, validUntil: item.valid_to ?? undefined, status: item.status, decidedBy: item.decided_by, decidedAt: item.decided_at ?? "" })));
-        offers.push(...response.offerResponse.items.map((item) => ({ id: item.id, houseId: item.house_id, phone: item.phone_number, entrance: item.entrance_number ?? undefined, apartment: item.apartment_number, status: item.status, createdAt: item.created_at })));
+        offers.push(...response.offerResponse.items.map((item) => ({ id: item.id, houseId: item.house_id, phone: item.phone_number, entrance: item.entrance_number ?? undefined, apartment: item.apartment_number, validUntil: item.proposed_access_until ?? undefined, status: item.status, createdAt: item.created_at })));
       }
       const [residentResponse, houseResponse] = await Promise.all([
         requestJson<{ items: WireRequest[] }>(query("/access/list_requests", { request_kind: "resident" })),
@@ -432,13 +440,13 @@ export const realIssuesClient: IssuesClient = {
     return { ...input, id: response.id, status: response.status, createdAt: new Date().toISOString() };
   },
 
-  async decideResidentRequest(id, outcome, note) {
-    await post("/access/decide_resident_request", { request_id: id, outcome, decision_note: note.trim() });
+  async decideResidentRequest(id, outcome, note, validUntil) {
+    await post("/access/decide_resident_request", { request_id: id, outcome, decision_note: note.trim(), valid_to: outcome === "granted" ? validUntil ?? null : null });
     return { id, houseId: "", fullName: "", apartment: 0, status: "closed", outcome, decisionNote: note, createdAt: "" };
   },
 
   async createResidentOffer(input) {
-    const response = await post<{ id: string; status: ResidentOffer["status"] }>("/access/create_resident_offer", { house_id: input.houseId, entrance_number: input.entrance, apartment_number: input.apartment, phone_number: input.phone });
+    const response = await post<{ id: string; status: ResidentOffer["status"] }>("/access/create_resident_offer", { house_id: input.houseId, entrance_number: input.entrance, apartment_number: input.apartment, phone_number: input.phone, valid_to: input.validUntil ?? null });
     return { ...input, id: response.id, status: response.status, createdAt: new Date().toISOString() };
   },
 

@@ -471,7 +471,7 @@ async def _location_options(
             if entrance is None or entrance in seen_entrances:
                 continue
             seen_entrances.add(entrance)
-            locations.append((apartment.id, f"Подъезд {entrance}"))
+            locations.append((apartment.id, f"Подъезд №{entrance}"))
         else:
             locations.append((apartment.id, f"Квартира {apartment.apartment_number}, подъезд {apartment.entrance_number or 'не указан'}"))
     if not locations:
@@ -489,7 +489,8 @@ async def _location_options(
     if navigation:
         buttons.append(navigation)
     buttons.append(_button("К выбору области", "i:back"))
-    return UiReply(f"Выберите свою локацию · страница {selected_page}/{pages}:", buttons)
+    prompt = "Выберите свой подъезд" if scope == "entrance" else "Выберите свою квартиру"
+    return UiReply(f"{prompt} · страница {selected_page}/{pages}:", buttons)
 
 
 async def _prepare_preview(
@@ -545,15 +546,23 @@ async def _prepare_preview(
     data["suggestion_source"] = suggestion.source
     data["description_check"] = suggestion.description_check
     data["description_warning"] = suggestion.description_warning
-    title = str(data.get("title") or suggestion.suggested_title)
+    if data.get("_manual_title_description") != description:
+        data.pop("_manual_title_description", None)
+    if data.get("_manual_summary_description") != description:
+        data.pop("_manual_summary_description", None)
+    title = (
+        str(data.get("title") or suggestion.suggested_title)
+        if data.get("_manual_title_description") else suggestion.suggested_title
+    )
     data["title"] = title
     suggested_summary = _summary_text(getattr(suggestion, "summary_description", None))
-    previous_summary = _summary_text(data.get("summary_description"))
-    summary = previous_summary or suggested_summary or description
-    data["summary_description"] = summary
-    data["_summary_fallback"] = (
-        bool(data.get("_summary_fallback")) if previous_summary else suggested_summary is None
+    manual_summary = (
+        _summary_text(data.get("summary_description"))
+        if data.get("_manual_summary_description") else None
     )
+    summary = manual_summary or suggested_summary or description
+    data["summary_description"] = summary
+    data["_summary_fallback"] = manual_summary is None and suggested_summary is None
     payload = {
         "house_id": str(house_id),
         "category_id": str(category_id),
@@ -1216,10 +1225,14 @@ async def _handle_text(
                 raise ValueError("Описание должно содержать от 1 до 1500 символов")
             data = dict(dialog.data)
             data.pop("_editing_description", None)
+            description_changed = data.get("description") != description
             data["description"] = description
-            data.pop("title", None)
-            data.pop("summary_description", None)
-            data.pop("_summary_fallback", None)
+            if description_changed:
+                data.pop("title", None)
+                data.pop("summary_description", None)
+                data.pop("_summary_fallback", None)
+                data.pop("_manual_title_description", None)
+                data.pop("_manual_summary_description", None)
             await update_dialog(dialog, step="scope", data=data)
             return await _scope_options(session, actor, dialog)
         if dialog.step == "scope":
@@ -1234,6 +1247,7 @@ async def _handle_text(
                 raise ValueError("Название должно содержать от 1 до 100 символов")
             data = dict(dialog.data)
             data["title"] = title
+            data["_manual_title_description"] = str(data["description"])
             draft = await get_draft(session, actor, dialog.draft_id)
             if draft.revision != data.get("draft_revision"):
                 raise ValueError(
@@ -1273,6 +1287,7 @@ async def _handle_text(
                 revision=draft.revision,
             )
             data["summary_description"] = summary
+            data["_manual_summary_description"] = str(data["description"])
             data["_summary_fallback"] = False
             data["draft_revision"] = saved.revision
             await update_dialog(dialog, step="attachments", data=data)

@@ -567,21 +567,34 @@ async def support_card(
     if inserted is not None:
         _record_issue_event(session, actor, card.id, "supported")
     report_id = None
-    if description and description.strip():
-        report_id = uuid4()
-        session.add(
-            IssueReport(
-                id=report_id,
-                card_id=card.id,
-                origin_card_id=card.id,
-                author_user_id=actor.id,
-                raw_description=description.strip(),
-                created_at=_now(),
+    normalized_description = description.strip() if description else ""
+    if normalized_description:
+        if inserted is None:
+            report_id = await session.scalar(
+                select(IssueReport.id)
+                .where(
+                    IssueReport.card_id == card.id,
+                    IssueReport.author_user_id == actor.id,
+                    IssueReport.raw_description == normalized_description,
+                )
+                .order_by(IssueReport.created_at.desc())
+                .limit(1)
             )
-        )
-        _record_issue_event(
-            session, actor, card.id, "report_added", after={"report_id": str(report_id)}
-        )
+        if report_id is None:
+            report_id = uuid4()
+            session.add(
+                IssueReport(
+                    id=report_id,
+                    card_id=card.id,
+                    origin_card_id=card.id,
+                    author_user_id=actor.id,
+                    raw_description=normalized_description,
+                    created_at=_now(),
+                )
+            )
+            _record_issue_event(
+                session, actor, card.id, "report_added", after={"report_id": str(report_id)}
+            )
     await session.flush()
     return card, report_id
 

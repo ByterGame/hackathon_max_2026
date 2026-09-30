@@ -38,6 +38,11 @@ def load_bot_token() -> str:
     return token
 
 
+def test_mode_enabled() -> bool:
+    """Only an explicit server-side TEST_MODE=1 enables test-only mutations."""
+    return os.getenv("TEST_MODE") == "1"
+
+
 def load_database_config() -> DatabaseConfig:
     load_dotenv(PROJECT_ROOT / ".env")
     raw_port = os.getenv("DB_PORT")

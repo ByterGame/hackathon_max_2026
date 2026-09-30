@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
-from src.domain.files.service import get_file, upload
+from src.domain.files.service import _parent, get_file, upload
 from src.domain.files.storage import FileError, path_for_key
 from src.domain.issues.service import IssueError
 
@@ -15,6 +15,62 @@ async def unused_stream():
 
 
 class FileAccessTests(unittest.IsolatedAsyncioTestCase):
+    async def test_resident_request_files_are_visible_to_applicant(self) -> None:
+        actor = SimpleNamespace(id=uuid4(), kind="resident")
+        request = SimpleNamespace(
+            id=uuid4(), applicant_user_id=actor.id,
+            status="reviewing", house_id=uuid4(),
+        )
+        session = SimpleNamespace()
+        with patch(
+            "src.domain.files.service.load_request",
+            new_callable=AsyncMock,
+            return_value=request,
+        ) as load:
+            parent, card_id = await _parent(
+                session, actor, "resident", request.id, writing=True
+            )
+        self.assertIs(parent, request)
+        self.assertIsNone(card_id)
+        self.assertEqual(load.await_args.kwargs["kind"], "resident")
+
+    async def test_resident_request_file_denies_non_party(self) -> None:
+        actor = SimpleNamespace(id=uuid4(), kind="resident")
+        request = SimpleNamespace(
+            id=uuid4(), applicant_user_id=uuid4(),
+            status="reviewing", house_id=uuid4(),
+        )
+        session = SimpleNamespace()
+        with (
+            patch(
+                "src.domain.files.service.load_request",
+                new_callable=AsyncMock,
+                return_value=request,
+            ),
+            patch(
+                "src.domain.access.requests.require_row",
+                new_callable=AsyncMock,
+                return_value=SimpleNamespace(company_id=uuid4()),
+            ),
+        ):
+            with self.assertRaises(FileError) as denied:
+                await _parent(session, actor, "resident", request.id, writing=False)
+        self.assertEqual(denied.exception.status_code, 404)
+
+    async def test_resident_request_file_upload_denies_finished_request(self) -> None:
+        actor = SimpleNamespace(id=uuid4(), kind="resident")
+        request = SimpleNamespace(
+            id=uuid4(), applicant_user_id=actor.id, status="closed",
+        )
+        with patch(
+            "src.domain.files.service.load_request",
+            new_callable=AsyncMock,
+            return_value=request,
+        ):
+            with self.assertRaises(FileError) as denied:
+                await _parent(SimpleNamespace(), actor, "resident", request.id, writing=True)
+        self.assertEqual(denied.exception.code, "request_finished")
+
     async def test_ready_file_requires_current_parent_visibility(self) -> None:
         actor = SimpleNamespace(id=uuid4())
         report_id = uuid4()

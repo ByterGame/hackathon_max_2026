@@ -9,7 +9,7 @@ from maxapi import Bot
 from maxapi.enums import AttachmentType
 from maxapi.types import CallbackButton
 from maxapi.types.attachments import AttachmentButton, ButtonsPayload
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -260,6 +260,20 @@ async def mark_read(
         notification.read_at = _now()
         await session.commit()
     return notification
+
+
+async def mark_all_read(session: AsyncSession, actor: User) -> int:
+    """Mark the actor's full notification history, including older unseen pages."""
+    result = await session.execute(
+        update(Notification)
+        .where(
+            Notification.recipient_user_id == actor.id,
+            Notification.read_at.is_(None),
+        )
+        .values(read_at=_now())
+    )
+    await session.commit()
+    return result.rowcount
 
 
 async def _recipient_ids(

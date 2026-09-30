@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { accessRequestStatusLabels, listAccessRequestsPage, requestAccessCancellation, type AccessRequestDetail, type AccessRequestKind, type AccessRequestStatus, type AccessRequestsPage } from "../features/issues/integrations/access_actions_api";
+import { accessRequestStatusLabels, listAccessRequestsPage, type AccessRequestDetail, type AccessRequestKind, type AccessRequestStatus, type AccessRequestsPage } from "../features/issues/integrations/access_actions_api";
 import { isDemoMode } from "../features/issues/integrations/client_api";
 import { formatApartmentLocation, formatDate, formatHouseCounts, type CompanyRegistrationRequest, type HouseAdditionRequest, type ResidentRequest } from "../features/issues/types";
 import { NotificationToggle } from "../features/notifications/ui/NotificationToggle";
@@ -8,6 +8,7 @@ import { HttpError } from "../shared/base_http_client";
 import { Icon } from "../shared/common_ui/Icon";
 import { ScreenHeader } from "../shared/common_ui/ScreenHeader";
 import { AccessCasePanel } from "./EmployeeAccess";
+import { CancelResidentRequestControl } from "./CancelResidentRequestControl";
 import "./my-requests.css";
 
 export interface ApplicantCase {
@@ -91,18 +92,8 @@ function statusExplanation(request: RequestSummary): string | null {
 }
 
 export function ApplicantRequestsList({ residentRequests, companyRequests, houseRequests, onOpen, limit, selectedCase, onChanged, pageItems, totalCount, fullPage = false }: RequestLists & { onOpen: (item: ApplicantCase) => void; limit?: number; selectedCase?: ApplicantCase | null; onChanged?: () => Promise<void>; pageItems?: RequestSummary[]; totalCount?: number; fullPage?: boolean }) {
-  const [cancelBusyId, setCancelBusyId] = useState<string | null>(null);
-  const [cancelError, setCancelError] = useState<{ id: string; message: string } | null>(null);
   const requests = pageItems ?? summaries({ residentRequests, companyRequests, houseRequests });
   if (requests.length === 0) return null;
-
-  async function cancelOpenResidentRequest(id: string) {
-    if (!onChanged || !window.confirm("Отменить заявку на доступ к дому?")) return;
-    setCancelBusyId(id); setCancelError(null);
-    try { await requestAccessCancellation("resident", id); await onChanged(); }
-    catch (reason) { setCancelError({ id, message: reason instanceof Error ? reason.message : "Не удалось отменить заявку" }); }
-    finally { setCancelBusyId(null); }
-  }
 
   return <section className="requests-list">
     <div className="section-heading"><h2>Мои заявки</h2><span className="count-badge">{totalCount ?? requests.length}</span></div>
@@ -127,8 +118,7 @@ export function ApplicantRequestsList({ residentRequests, companyRequests, house
           </button>
           {expanded && onChanged && <AccessCasePanel key={`${request.kind}:${request.id}`} kind={request.kind} id={request.id} perspective="applicant" onChanged={onChanged} />}
         </div>
-        {!isDemoMode && onChanged && request.kind === "resident" && request.status === "open" && !expanded && <button type="button" className="button button--soft my-requests__cancel" disabled={cancelBusyId !== null} onClick={() => void cancelOpenResidentRequest(request.id)}>Отменить заявку</button>}
-        {cancelError?.id === request.id && <p className="form-error" role="alert">{cancelError.message}</p>}
+        {!isDemoMode && onChanged && request.kind === "resident" && request.status === "open" && !expanded && <CancelResidentRequestControl id={request.id} onChanged={onChanged} />}
       </div>;
       return <article className="panel request-card" key={`${request.kind}:${request.id}`}>
         <strong>{request.title}</strong>
@@ -136,8 +126,8 @@ export function ApplicantRequestsList({ residentRequests, companyRequests, house
         <small>{formatDate(request.createdAt)} · {statusLabel(request)}</small>
         {request.decisionNote && <span>Пояснение: {request.decisionNote}</span>}
         {request.kind === "resident" && <NotificationToggle subject="resident_request" id={request.id} />}
-        <div className="button-row"><button type="button" className="button button--soft" aria-expanded={onChanged ? expanded : undefined} onClick={() => onOpen({ kind: request.kind, id: request.id })}>{expanded ? "Скрыть обсуждение" : isDemoMode ? "Открыть заявку" : "Открыть заявку и обсуждение"}</button>{!isDemoMode && onChanged && request.kind === "resident" && request.status === "open" && !expanded && <button type="button" className="button button--soft" disabled={cancelBusyId !== null} onClick={() => void cancelOpenResidentRequest(request.id)}>Отменить заявку</button>}</div>
-        {cancelError?.id === request.id && <p className="form-error" role="alert">{cancelError.message}</p>}
+        <button type="button" className="button button--soft" aria-expanded={onChanged ? expanded : undefined} onClick={() => onOpen({ kind: request.kind, id: request.id })}>{expanded ? "Скрыть обсуждение" : isDemoMode ? "Открыть заявку" : "Открыть заявку и обсуждение"}</button>
+        {!isDemoMode && onChanged && request.kind === "resident" && request.status === "open" && !expanded && <CancelResidentRequestControl id={request.id} onChanged={onChanged} />}
         {expanded && onChanged && <AccessCasePanel key={`${request.kind}:${request.id}`} kind={request.kind} id={request.id} perspective="applicant" onChanged={onChanged} />}
       </article>;
     })}

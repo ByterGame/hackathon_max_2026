@@ -229,6 +229,39 @@ class GigaChatSuggestionTests(unittest.IsolatedAsyncioTestCase):
         ):
             self.assertNotIn(private, log_fields)
 
+    async def test_one_letter_summary_falls_back_to_local_suggestion(self) -> None:
+        client = FakeClient([
+            FakeResponse(200, {
+                "access_token": "private-access-token",
+                "expires_at": time.time() + 1800,
+            }),
+            FakeResponse(200, {"choices": [{"message": {"content": json.dumps({
+                "title": "Отсутствие света",
+                "similar_card_ids": [],
+                "description_check": "ok",
+                "description_warning": None,
+                "summary_description": "п",
+            })}}]}),
+        ])
+        with (
+            patch("src.domain.issues.suggest._load_candidates", new_callable=AsyncMock) as load,
+            patch("src.domain.issues.gigachat.aiohttp.ClientSession", return_value=client),
+            patch("src.domain.issues.gigachat._logger") as logger,
+            patch.dict("os.environ", {
+                "ISSUE_AI_PROVIDER": "gigachat",
+                "GIGACHAT_AUTH_KEY": "private-auth-key",
+                "GIGACHAT_SEND_REAL_DATA": "1",
+            }, clear=True),
+        ):
+            load.return_value = ([], None)
+            result = await suggest_issue(
+                SimpleNamespace(), SimpleNamespace(id=UUID(int=1)),
+                house_id=UUID(int=2), description="В доме нет света",
+            )
+        self.assertEqual(result.source, "local")
+        self.assertIsNone(result.summary_description)
+        self.assertEqual(logger.warning.call_args.kwargs["extra"]["error_code"], "invalid_response")
+
     async def test_schema_422_retries_once_without_response_format(self) -> None:
         client = FakeClient(
             [

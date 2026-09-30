@@ -264,7 +264,7 @@ class AdminApiTests(unittest.IsolatedAsyncioTestCase):
     async def test_resident_offer_rejects_pending_support_invite(self) -> None:
         apartment = SimpleNamespace(id=uuid4())
         self.session.scalar.side_effect = [apartment, uuid4(), None]
-        house = SimpleNamespace(id=uuid4(), company_id=uuid4(), entrance_count=3)
+        house = SimpleNamespace(id=uuid4(), company_id=uuid4(), entrance_count=3, apartment_count=40)
         with (
             patch(
                 "src.domain.access.resident.require_row", new_callable=AsyncMock

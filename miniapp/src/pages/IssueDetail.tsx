@@ -19,6 +19,11 @@ function parsePositiveNumbers(value: string): number[] | null {
   return [...new Set(parts.map(Number))];
 }
 
+function displayPhone(value?: string): string | null {
+  if (!value) return null;
+  return /^7\d{10}$/.test(value) ? `+${value}` : value;
+}
+
 export function IssueDetail({ issue, house, role, currentUserId, canManageIssues, categories, relatedIssues, onBack, onChanged, onMerged }: { issue: Issue; house: House; role: Role; currentUserId: string; canManageIssues: boolean; categories: IssueCategory[]; relatedIssues: Issue[]; onBack: () => void; onChanged: () => Promise<void>; onMerged: (id: string) => Promise<void> }) {
   const [comment, setComment] = useState("");
   const [status, setStatus] = useState<IssueStatus>(issue.status);
@@ -37,6 +42,7 @@ export function IssueDetail({ issue, house, role, currentUserId, canManageIssues
   const [mergeTitle, setMergeTitle] = useState(issue.title);
   const [mergeStatus, setMergeStatus] = useState<Exclude<IssueStatus, "closed">>(issue.status === "closed" ? "open" : issue.status);
   const [mergeNote, setMergeNote] = useState("");
+  const [mergeConfirmed, setMergeConfirmed] = useState(false);
   const [mergeSuggestions, setMergeSuggestions] = useState<StaffMergeSuggestion | null>(null);
   const [mergeSuggestionBusy, setMergeSuggestionBusy] = useState(false);
   const reportFilesKey = `${issue.id}:${(issue.reportIds ?? []).join(",")}`;
@@ -75,6 +81,7 @@ export function IssueDetail({ issue, house, role, currentUserId, canManageIssues
     setMergeStatus(issue.status === "closed" ? "open" : issue.status);
     setMergeSuggestions(null);
     setMergeOtherId("");
+    setMergeConfirmed(false);
   }, [issue.id, issue.version]);
   useEffect(() => {
     setReportFiles({ key: reportFilesKey, files: [], failed: false });
@@ -131,8 +138,7 @@ export function IssueDetail({ issue, house, role, currentUserId, canManageIssues
     event.preventDefault();
     const other = relatedIssues.find((item) => item.id === mergeOtherId);
     if (!other) { setError("Выберите вторую открытую карточку этого дома"); return; }
-    const describe = (card: Issue) => `${card.title}\nОбласть: ${formatIssueScope(card.scope)}\n${card.summaryDescription || card.description}`;
-    if (!window.confirm(`Объединить эти проблемы?\n\nПервая карточка:\n${describe(issue)}\n\nВторая карточка:\n${describe(other)}\n\nИсходные обращения и обсуждение сохранятся в общей карточке.`)) return;
+    if (!mergeConfirmed) { setError("Подтвердите, что проверили обе карточки перед объединением"); return; }
     setBusy(true); setError("");
     try {
       const merged = await issuesClient.mergeIssues(issue.id, mergeOtherId, mergeTitle, mergeStatus, mergeNote);
@@ -150,7 +156,7 @@ export function IssueDetail({ issue, house, role, currentUserId, canManageIssues
         : await suggestStaffMerges(issue.id);
       setMergeSuggestions(result);
       const firstVisible = result.similar_card_ids.find((id) => relatedIssues.some((item) => item.id === id));
-      if (firstVisible) setMergeOtherId(firstVisible);
+      if (firstVisible) { setMergeOtherId(firstVisible); setMergeConfirmed(false); }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось найти похожие проблемы");
     } finally {
@@ -209,6 +215,7 @@ export function IssueDetail({ issue, house, role, currentUserId, canManageIssues
   const canReopen = role === "resident" && issue.status === "closed" && issue.authorId === currentUserId;
   const suggestedRelatedIssues = mergeSuggestions?.similar_card_ids
     .flatMap((id) => relatedIssues.filter((item) => item.id === id)) ?? [];
+  const mergeOther = relatedIssues.find((item) => item.id === mergeOtherId);
   const latestOfficialEvent = issue.currentNote
     ? issue.events.slice().reverse().find((event) => event.note?.trim() === issue.currentNote?.trim())
     : undefined;
@@ -246,7 +253,7 @@ export function IssueDetail({ issue, house, role, currentUserId, canManageIssues
         <textarea id="issue-official-reply" ref={replyInput} value={comment} disabled={busy || Boolean(pendingCommentId)} onChange={(event) => setComment(event.target.value)} placeholder="Введите сообщение для жителей…" rows={3} />
         <button type="submit" className="button button--primary" disabled={busy || (!comment.trim() && !commentFiles.length && !pendingCommentId)}>{busy ? "Отправляем…" : "Отправить ответ"}</button>
       </div>
-      : <div className="comment-form__row"><input aria-label="Комментарий" value={comment} disabled={busy || Boolean(pendingCommentId)} onChange={(event) => setComment(event.target.value)} placeholder="Добавить комментарий…" /><button type="submit" className="icon-button icon-button--blue" aria-label="Отправить" disabled={busy || (!comment.trim() && !commentFiles.length && !pendingCommentId)}><Icon name="send" size={19} /></button></div>}
+      : <div className="comment-form__row"><label className="comment-form__label"><span>Ваше сообщение</span><textarea aria-label="Комментарий" value={comment} disabled={busy || Boolean(pendingCommentId)} onChange={(event) => setComment(event.target.value)} placeholder="Напишите сообщение по этой проблеме…" rows={2} /></label><button type="submit" className="icon-button icon-button--blue" aria-label="Отправить" disabled={busy || (!comment.trim() && !commentFiles.length && !pendingCommentId)}><Icon name="send" size={19} /></button></div>}
     {!isDemoMode && issue.status !== "closed" && <label className="comment-file">Прикрепить файлы к сообщению<small>Форматы: {SUPPORTED_FILE_FORMATS} · до {MAX_FILE_SIZE_LABEL} на файл</small><input ref={commentFileInput} type="file" multiple disabled={busy} accept="image/jpeg,image/png,image/webp,application/pdf,video/mp4,video/quicktime" onChange={(event) => {
       const selected = [...(event.target.files ?? [])];
       event.target.value = "";
@@ -319,13 +326,19 @@ export function IssueDetail({ issue, house, role, currentUserId, canManageIssues
         <summary>Сведения о проблеме</summary>
         <div className="issue-detail__metadata-content">
           <span>Область: {formatIssueScope(issue.scope)}</span>
-          {role === "employee" && <span>Поддержали {formatCount(issue.supportsCount, ["житель", "жителя", "жителей"])}</span>}
           <span>Категория: {issue.category}</span>
           <span>Дом: {house.address}</span>
           <span>Сообщений: {issue.messages.length}</span>
           <span>Создана: {formatDate(issue.createdAt)}</span>
         </div>
       </details>
+
+      {role === "employee" && <details className="panel issue-detail__supporters">
+        <summary>Поддержали {formatCount(issue.supportsCount, ["житель", "жителя", "жителей"])}</summary>
+        {issue.supporters?.length
+          ? <ul>{issue.supporters.map((supporter) => <li key={supporter.userId}><strong>{supporter.displayName}</strong><span>{[displayPhone(supporter.phoneNumber), formatDate(supporter.supportedAt)].filter(Boolean).join(" · ")}</span></li>)}</ul>
+          : <p className="field-help">{isDemoMode ? "Список имён недоступен в демонстрационном режиме." : "Список поддержавших пока пуст."}</p>}
+      </details>}
 
       {(privateFiles.length > 0 || privateFilesFailed) && <section className="panel attachment-panel"><h3>Вложения</h3>{privateFiles.length > 0 && <div className="attachment-list">{privateFiles.map((file) => <PrivateAttachmentPreview key={file.id} file={file} />)}</div>}{privateFilesFailed && <div className="issue-detail__attachment-error" role="status">Не все вложения удалось загрузить. <button type="button" onClick={() => setFileLoadRevision((current) => current + 1)}>Повторить</button></div>}</section>}
 
@@ -361,7 +374,7 @@ export function IssueDetail({ issue, house, role, currentUserId, canManageIssues
               : mergeSuggestions.source === "gigachat" ? "ИИ не нашёл похожих открытых карточек." : "Похожих карточек по словам не найдено. ИИ не использовался."}
           </div>}
           <label className="field"><span>Вторая открытая карточка этого дома</span>
-            <select required value={mergeOtherId} onChange={(event) => setMergeOtherId(event.target.value)}>
+            <select required value={mergeOtherId} onChange={(event) => { setMergeOtherId(event.target.value); setMergeConfirmed(false); }}>
               <option value="">Выберите карточку</option>
               {relatedIssues.map((item) => <option key={item.id} value={item.id}>{item.title} · {formatIssueScope(item.scope)}</option>)}
             </select>
@@ -370,7 +383,11 @@ export function IssueDetail({ issue, house, role, currentUserId, canManageIssues
           <label className="field"><span>Итоговый статус</span><select value={mergeStatus} onChange={(event) => setMergeStatus(event.target.value as Exclude<IssueStatus, "closed">)}>{(["open", "reviewing", "needs_info", "in_progress"] as const).map((value) => <option key={value} value={value}>{issueStatusLabels[value]}</option>)}</select></label>
           <label className="field"><span>Пояснение</span><textarea value={mergeNote} onChange={(event) => setMergeNote(event.target.value)} rows={2} /></label>
           <p className="field-help">Поддержки, обращения и обсуждение сохранятся в общей карточке.</p>
-          <button type="submit" className="button button--soft" disabled={busy || !mergeOtherId || !mergeTitle.trim()}>Объединить карточки</button>
+          {mergeOther && <div className="issue-management__merge-preview" aria-label="Карточки для объединения">
+            {[issue, mergeOther].map((card, index) => <div key={card.id}><small>{index === 0 ? "Основная карточка" : "Вторая карточка"}</small><strong>{card.title}</strong><span>Область: {formatIssueScope(card.scope)}</span><p>{card.summaryDescription || card.description}</p></div>)}
+          </div>}
+          {mergeOther && <label className="checkbox-row issue-management__merge-confirm"><input type="checkbox" checked={mergeConfirmed} onChange={(event) => setMergeConfirmed(event.target.checked)} /><span>Я проверил обе карточки и хочу объединить их</span></label>}
+          <button type="submit" className="button button--soft" disabled={busy || !mergeOtherId || !mergeTitle.trim() || !mergeConfirmed}>Объединить карточки</button>
         </form>
       </details>}
 

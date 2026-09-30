@@ -64,7 +64,7 @@ export interface IssuesClient {
   mergeIssues(leftId: string, rightId: string, finalTitle: string, finalStatus: Exclude<IssueStatus, "closed">, finalNote: string): Promise<Issue>;
   reopenIssue(id: string, reason: string): Promise<Issue>;
   submitResidentRequest(input: Pick<ResidentRequest, "houseId" | "fullName" | "apartment"> & { entrance: number }, idempotencyKey?: string): Promise<ResidentRequest>;
-  decideResidentRequest(id: string, outcome: "granted" | "denied", note: string): Promise<ResidentRequest>;
+  decideResidentRequest(id: string, outcome: "granted" | "denied", note: string, validUntil?: string): Promise<ResidentRequest>;
   createResidentOffer(input: Omit<ResidentOffer, "id" | "status" | "createdAt"> & { entrance: number }): Promise<ResidentOffer>;
   answerResidentOffer(id: string, accept: boolean): Promise<ResidentOffer>;
   assignStaff(companyId: string, phone: string, rights: StaffRights): Promise<StaffAssignment>;
@@ -196,10 +196,10 @@ function normalizePhone(value: string): string {
   throw new Error("Введите номер в формате +7 999 123-45-67");
 }
 
-function addGrant(houseId: string, apartment: number, fullName: string, phone: string, entrance: number): ResidentGrant {
+function addGrant(houseId: string, apartment: number, fullName: string, phone: string, entrance: number, validUntil?: string): ResidentGrant {
   const existing = current().residentGrants.find((grant) => grant.houseId === houseId && grant.apartment === apartment && grant.phone === phone);
   if (existing) return existing;
-  const grant: ResidentGrant = { id: makeId(), apartmentId: makeId(), houseId, entrance, apartment, fullName, phone, decidedBy: "УК «Дом-Сервис»", decidedAt: new Date().toISOString() };
+  const grant: ResidentGrant = { id: makeId(), apartmentId: makeId(), houseId, entrance, apartment, fullName, phone, validUntil, decidedBy: "УК «Дом-Сервис»", decidedAt: new Date().toISOString() };
   current().residentGrants.push(grant);
   return grant;
 }
@@ -426,7 +426,7 @@ const demoIssuesClient: IssuesClient = {
     return { ...request };
   },
 
-  async decideResidentRequest(id, outcome, note) {
+  async decideResidentRequest(id, outcome, note, validUntil) {
     const request = current().residentRequests.find((item) => item.id === id);
     if (!request) throw new Error("Заявка не найдена");
     if (request.status === "closed") throw new Error("По заявке уже принято решение");
@@ -436,7 +436,7 @@ const demoIssuesClient: IssuesClient = {
     request.decidedAt = new Date().toISOString();
     if (outcome === "granted") {
       if (!request.entrance) throw new Error("Перед выдачей доступа укажите подъезд жильца");
-      addGrant(request.houseId, request.apartment, request.fullName, demoResident.phone, request.entrance);
+      addGrant(request.houseId, request.apartment, request.fullName, demoResident.phone, request.entrance, validUntil);
     }
     save();
     return { ...request };
@@ -460,7 +460,7 @@ const demoIssuesClient: IssuesClient = {
     offer.status = accept ? "accepted" : "declined";
     if (accept) {
       if (!offer.entrance) throw new Error("В предложении не указан подъезд. Попросите УК создать новое предложение.");
-      addGrant(offer.houseId, offer.apartment, demoResident.name, demoResident.phone, offer.entrance);
+      addGrant(offer.houseId, offer.apartment, demoResident.name, demoResident.phone, offer.entrance, offer.validUntil);
     }
     save();
     return { ...offer };

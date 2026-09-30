@@ -4,16 +4,19 @@ import { IssueCard } from "../features/issues/ui/IssueCard";
 import { formatDate, formatHouseCounts, formatIssueScope, issueStatusLabels, type House, type Issue } from "../features/issues/types";
 import { formatCount } from "../shared/format_count";
 import { Icon } from "../shared/common_ui/Icon";
+import brandMark from "../assets/brand-mark.svg";
 
 import "./employee-home.css";
 
-type Filter = "all" | "open" | "working" | "closed";
+type Filter = "all" | "open" | "reviewing" | "needs_info" | "in_progress" | "closed";
 type FilterPanel = "status" | "category" | "house" | "search" | "sort" | null;
 
 const statusFilters: { value: Filter; label: string }[] = [
   { value: "all", label: "Все" },
   { value: "open", label: "Открытые" },
-  { value: "working", label: "В обработке" },
+  { value: "reviewing", label: "На рассмотрении" },
+  { value: "needs_info", label: "Нужны уточнения" },
+  { value: "in_progress", label: "В работе" },
   { value: "closed", label: "Закрытые" },
 ];
 
@@ -43,8 +46,6 @@ export function EmployeeHome({ houses, issues, onIssue, onAccess, onNotification
       open: issues.filter((item) => item.status === "open").length,
       reviewing: issues.filter((item) => item.status === "reviewing").length,
       inProgress: issues.filter((item) => item.status === "in_progress").length,
-      processing: issues.filter((item) => ["reviewing", "needs_info", "in_progress"].includes(item.status)).length,
-      info: issues.filter((item) => item.status === "needs_info").length,
       resolvedToday: issues.filter((item) => item.status === "closed" && item.closeResult === "solved" && new Date(item.updatedAt).toDateString() === today).length,
     };
   }, [issues]);
@@ -55,7 +56,9 @@ export function EmployeeHome({ houses, issues, onIssue, onAccess, onNotification
   const visible = useMemo(() => issues.filter((item) => {
     const matchesStatus = filter === "all"
       || (filter === "open" && item.status === "open")
-      || (filter === "working" && ["reviewing", "needs_info", "in_progress"].includes(item.status))
+      || (filter === "reviewing" && item.status === "reviewing")
+      || (filter === "needs_info" && item.status === "needs_info")
+      || (filter === "in_progress" && item.status === "in_progress")
       || (filter === "closed" && item.status === "closed");
     return (houseId === "all" || item.houseId === houseId)
       && (category === "all" || item.category === category)
@@ -93,7 +96,7 @@ export function EmployeeHome({ houses, issues, onIssue, onAccess, onNotification
   return (
     <div className="page page--employee employee-home">
       <aside className="employee-home__sidebar" aria-label="Навигация УК">
-        <div className="employee-home__brand">СвойДом · УК</div>
+        <div className="employee-home__brand"><span className="employee-home__brand-mark"><img src={brandMark} alt="" width="38" height="38" /></span><span>СвойДом <small>УК</small></span></div>
         <button type="button" className="employee-home__nav-item employee-home__nav-item--active" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>Управление домами</button>
         <button type="button" className="employee-home__nav-item" onClick={() => document.getElementById("employee-issues")?.scrollIntoView({ behavior: "smooth" })}>Проблемы</button>
         <button type="button" className="employee-home__nav-item" onClick={onAccess}>Доступы</button>
@@ -122,8 +125,7 @@ export function EmployeeHome({ houses, issues, onIssue, onAccess, onNotification
 
         {filterPanel && <div className="employee-home__filter-panel" aria-label="Настройка фильтра">
           {filterPanel === "status" && <div className="employee-home__filter-options" role="group" aria-label="Состояние проблемы">
-            {statusFilters.map((option) => <button type="button" key={option.value} className={filter === option.value ? "is-selected" : ""} onClick={() => { setFilter(option.value); setFilterPanel(null); }}>{option.label}{option.value === "working" && <small>Всего: {counts.processing}</small>}</button>)}
-            <p className="employee-home__filter-summary">Нужны уточнения: {counts.info} · Решены сегодня: {counts.resolvedToday}</p>
+            {statusFilters.map((option) => <button type="button" key={option.value} className={filter === option.value ? "is-selected" : ""} onClick={() => { setFilter(option.value); setFilterPanel(null); }}>{option.label}</button>)}
           </div>}
           {filterPanel === "category" && <label className="employee-home__filter-field"><span>Категория</span><select value={category} onChange={(event) => { setCategory(event.target.value); setFilterPanel(null); }}><option value="all">Все категории</option>{categories.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>}
           {filterPanel === "house" && <label className="employee-home__filter-field"><span>Дом</span><select value={houseId} onChange={(event) => { setHouseId(event.target.value); setFilterPanel(null); }}><option value="all">Все дома</option>{houses.map((house) => <option key={house.id} value={house.id}>{house.address}</option>)}</select></label>}

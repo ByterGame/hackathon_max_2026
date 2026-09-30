@@ -5,6 +5,7 @@
 
 .notifications-page__toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
@@ -12,6 +13,7 @@
 }
 
 .notifications-page__toolbar p {
+  flex: 1 1 220px;
   max-width: 540px;
   margin: 0;
   color: var(--muted);
@@ -19,7 +21,13 @@
   line-height: 1.5;
 }
 
-.notifications-page__toolbar .text-link {
+.notifications-page__toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+}
+
+.notifications-page__toolbar-actions .text-link {
   flex: 0 0 auto;
   padding: 0;
 }

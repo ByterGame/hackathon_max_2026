@@ -290,6 +290,30 @@ class BotRouterTests(unittest.IsolatedAsyncioTestCase):
             any(isinstance(item, InputMediaBuffer) for item in answer["attachments"])
         )
 
+    async def test_access_file_callback_uses_authorized_handler(self) -> None:
+        request_id, file_id = uuid4(), uuid4()
+        event = SimpleNamespace(
+            ack=AsyncMock(), message=self.message,
+            callback=SimpleNamespace(
+                user=self.sender,
+                payload=f"f:access_get:{request_id}:{file_id}",
+                callback_id="access-file-callback",
+            ),
+        )
+        media = InputMediaBuffer(b"%PDF", filename="document", type="file")
+        with (
+            patch.object(commands, "get_or_create_user", new=AsyncMock(return_value=self.actor)),
+            patch.object(commands, "_reserve_message", new=AsyncMock(return_value=True)),
+            patch.object(commands, "clear_dialog", new=AsyncMock()),
+            patch.object(
+                commands, "get_access_attachment",
+                new=AsyncMock(return_value=UiReply("Файл", media=media)),
+            ) as fetch,
+        ):
+            await self.callback_handler(event)
+        fetch.assert_awaited_once_with(self.session, self.actor, request_id, file_id)
+        self.assertIn(media, self.message.answer.await_args.kwargs["attachments"])
+
     async def test_plain_text_is_consumed_by_active_issue_step(self) -> None:
         dialog = SimpleNamespace(flow_kind="issue_new", step="description")
         with (
@@ -346,6 +370,34 @@ class BotRouterTests(unittest.IsolatedAsyncioTestCase):
             )
         self.assertIn(media, self.message.answer.await_args.kwargs["attachments"])
 
+    async def test_access_file_text_commands_use_same_authorized_handlers(self) -> None:
+        request_id, file_id = uuid4(), uuid4()
+        media = InputMediaBuffer(b"%PDF", filename="document", type="file")
+        with (
+            patch.object(commands, "get_or_create_user", new=AsyncMock(return_value=self.actor)),
+            patch.object(commands, "_reserve_message", new=AsyncMock(return_value=True)),
+            patch.object(commands, "get_dialog", new=AsyncMock(return_value=None)),
+            patch.object(
+                commands, "list_access_attachments",
+                new=AsyncMock(return_value=UiReply("Список")),
+            ) as listing,
+            patch.object(
+                commands, "get_access_attachment",
+                new=AsyncMock(return_value=UiReply("Файл", media=media)),
+            ) as fetching,
+        ):
+            await self.message_handler(
+                self._message_event(f"/files access {request_id}")
+            )
+            listing.assert_awaited_once_with(self.session, self.actor, request_id)
+            await self.message_handler(
+                self._message_event(f"/getfile access {request_id} {file_id}")
+            )
+            fetching.assert_awaited_once_with(
+                self.session, self.actor, request_id, file_id
+            )
+        self.assertIn(media, self.message.answer.await_args.kwargs["attachments"])
+
     async def test_cancel_clears_active_dialog_without_consuming_text(self) -> None:
         dialog = SimpleNamespace(flow_kind="issue_new", step="description")
         with (
@@ -385,6 +437,33 @@ class BotRouterTests(unittest.IsolatedAsyncioTestCase):
             await self.message_handler(self._message_event("", attachments=[object()]))
         media.assert_not_awaited()
         self.assertIn("шага вложений", self.message.answer.await_args.kwargs["text"])
+
+    async def test_access_file_dialog_uploads_to_selected_request(self) -> None:
+        request_id = uuid4()
+        dialog = SimpleNamespace(
+            flow_kind="access_file", step="upload",
+            data={"request_id": str(request_id)},
+        )
+        attachment = object()
+        with (
+            patch.object(commands, "get_or_create_user", new=AsyncMock(return_value=self.actor)),
+            patch.object(commands, "_reserve_message", new=AsyncMock(return_value=True)),
+            patch.object(commands, "get_dialog", new=AsyncMock(return_value=dialog)),
+            patch.object(
+                commands, "handle_media_text",
+                new=AsyncMock(return_value=SimpleNamespace(reply="Сохранено", storage_key=None)),
+            ) as media,
+            patch.object(commands, "clear_dialog", new=AsyncMock()) as clear,
+        ):
+            await self.message_handler(
+                self._message_event("", attachments=[attachment])
+            )
+        media.assert_awaited_once_with(
+            self.session, self.actor, f"/file access {request_id}",
+            [attachment], bot=self.message.bot,
+        )
+        clear.assert_awaited_once_with(self.session, self.actor.id)
+        self.assertIn("Сохранено", self.message.answer.await_args.kwargs["text"])
 
 
 if __name__ == "__main__":

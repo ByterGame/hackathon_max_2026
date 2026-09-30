@@ -1,0 +1,227 @@
+# Контрольный сценарий собственного API для сдачи проекта.
+# Идентификаторы и подписанные данные MAX получают во время проверки;
+# постоянные токены и личные номера в этот файл не помещаются.
+schemaVersion: "1.0"
+solution:
+  name: "СвойДом"
+  teamId: "We_Use_GPT"
+api:
+  baseUrl: "https://168.113.209.86"
+  openapi: "./openapi.json"
+  defaultHeaders:
+    Accept: "application/json"
+  authentication:
+    type: "apiKey"
+    in: "header"
+    name: "X-Max-Init-Data"
+    description: "Свежие подписанные данные запуска мини-приложения MAX, отдельные для каждого аккаунта; срок действия — 1 час."
+testData: "./submission/test-data.json"
+roles:
+  resident_a: "Первый жилец из test-data.json, отдельный подтверждённый аккаунт MAX."
+  resident_b: "Второй жилец из test-data.json, отдельный подтверждённый аккаунт MAX."
+  employee: "Первый сотрудник тестовой УК с правами на жильцов и проблемы."
+  public: "Авторизация не требуется."
+inputs:
+  HOUSE_SEARCH_TEXT: "Проверочная"
+  HOUSE_ID: "id подключённого тестового дома из ответа find_house"
+  CATEGORY_ID: "id категории «Лифт» из ответа categories"
+  MAX_INIT_DATA_RESIDENT_A: "свежий window.WebApp.initData первого жителя"
+  MAX_INIT_DATA_RESIDENT_B: "свежий window.WebApp.initData второго жителя"
+  MAX_INIT_DATA_EMPLOYEE: "свежий window.WebApp.initData сотрудника УК"
+  REQUEST_ID: "id из ответа request_access"
+  CARD_ID: "card.id из ответа create_issue"
+  NEW_UUID_FOR_EACH_POST: "новый UUID как Idempotency-Key в каждом POST"
+prerequisites:
+  - "Есть подключённая тестовая УК и дом из test-data.json; TEST_MODE=1 допускается только для её временного самоподтверждения."
+  - "Сотрудник УК подтвердил телефон через MAX и имеет права can_manage_residents и can_manage_issues."
+  - "Два разных жителя подтвердили свои номера через MAX; житель B уже получил доступ к тестовому дому."
+  - "Перед запросами заполнить HOUSE_ID и CATEGORY_ID из ответов API, а также свежие MAX_INIT_DATA_RESIDENT_A, MAX_INIT_DATA_RESIDENT_B и MAX_INIT_DATA_EMPLOYEE."
+  - "Для каждого изменяющего запроса использовать новый Idempotency-Key; повтор с тем же ключом возвращает 409."
+checks:
+  - id: health
+    name: "HTTP-сервис отвечает"
+    required: true
+    method: GET
+    path: /service/health
+    role: public
+    params: {}
+    expected:
+      statusCodes: [200]
+      contentType: application/json
+      json:
+        status: ok
+      requiredFields: [status]
+
+  - id: ready
+    name: "PostgreSQL доступен приложению"
+    required: true
+    method: GET
+    path: /service/ready
+    role: public
+    params: {}
+    expected:
+      statusCodes: [200]
+      contentType: application/json
+      json:
+        status: ok
+      requiredFields: [status]
+
+  - id: find_house
+    name: "Найти подключённый дом"
+    required: true
+    method: GET
+    path: /access/search_houses
+    role: resident_a
+    params:
+      query:
+        text: "${HOUSE_SEARCH_TEXT}"
+      headers:
+        X-Max-Init-Data: "${MAX_INIT_DATA_RESIDENT_A}"
+    expected:
+      statusCodes: [200]
+      contentType: application/json
+      requiredFields: [items]
+      jsonStructure:
+        items: "array of {id, address_display, entrance_count, apartment_count}"
+
+  - id: categories
+    name: "Получить категории проблем"
+    required: true
+    method: GET
+    path: /issues/list_categories
+    role: public
+    params: {}
+    expected:
+      statusCodes: [200]
+      contentType: application/json
+      requiredFields: [categories]
+      jsonStructure:
+        categories: "array of {id, code, name}"
+
+  - id: request_access
+    name: "Житель A подаёт заявку на доступ к дому"
+    required: true
+    method: POST
+    path: /access/create_resident_request
+    role: resident_a
+    params:
+      headers:
+        Content-Type: application/json
+        X-Max-Init-Data: "${MAX_INIT_DATA_RESIDENT_A}"
+        Idempotency-Key: "${NEW_UUID_FOR_REQUEST_ACCESS}"
+      body:
+        house_id: "${HOUSE_ID}"
+        full_name: "Тестов Иван Иванович"
+        entrance_number: 1
+        apartment_number: 12
+    expected:
+      statusCodes: [201]
+      contentType: application/json
+      requiredFields: [id, status]
+      json:
+        status: open
+      jsonStructure:
+        id: uuid
+    saveResponseFields:
+      REQUEST_ID: id
+
+  - id: approve_access
+    name: "Сотрудник УК выдаёт жителю A доступ"
+    required: true
+    method: POST
+    path: /access/decide_resident_request
+    role: employee
+    params:
+      headers:
+        Content-Type: application/json
+        X-Max-Init-Data: "${MAX_INIT_DATA_EMPLOYEE}"
+        Idempotency-Key: "${NEW_UUID_FOR_APPROVE_ACCESS}"
+      body:
+        request_id: "${REQUEST_ID}"
+        outcome: granted
+        decision_note: "Тестовый доступ подтверждён"
+    expected:
+      statusCodes: [200]
+      contentType: application/json
+      requiredFields: [id, status, related_id]
+      json:
+        status: closed
+      jsonStructure:
+        id: uuid
+        related_id: uuid
+
+  - id: create_issue
+    name: "Житель A создаёт проблему подъезда"
+    required: true
+    method: POST
+    path: /issues/create_card
+    role: resident_a
+    params:
+      headers:
+        Content-Type: application/json
+        X-Max-Init-Data: "${MAX_INIT_DATA_RESIDENT_A}"
+        Idempotency-Key: "${NEW_UUID_FOR_CREATE_ISSUE}"
+      body:
+        house_id: "${HOUSE_ID}"
+        category_id: "${CATEGORY_ID}"
+        title: "Не работает лифт"
+        description: "В первом подъезде лифт не реагирует на кнопку вызова и стоит на первом этаже."
+        scope: entrance
+    expected:
+      statusCodes: [201]
+      contentType: application/json
+      requiredFields: [card.id, card.status, card.support_count]
+      json:
+        card:
+          status: open
+          support_count: 1
+      jsonStructure:
+        card.id: uuid
+    saveResponseFields:
+      CARD_ID: card.id
+
+  - id: support_issue
+    name: "Житель B поддерживает ту же проблему"
+    required: true
+    method: POST
+    path: /issues/support_card
+    role: resident_b
+    params:
+      headers:
+        Content-Type: application/json
+        X-Max-Init-Data: "${MAX_INIT_DATA_RESIDENT_B}"
+        Idempotency-Key: "${NEW_UUID_FOR_SUPPORT_ISSUE}"
+      body:
+        card_id: "${CARD_ID}"
+    expected:
+      statusCodes: [200]
+      contentType: application/json
+      requiredFields: [card.id, card.support_count, card.supported_by_me]
+      json:
+        card:
+          support_count: 2
+          supported_by_me: true
+
+  - id: update_issue_status
+    name: "Сотрудник УК переводит проблему в работу"
+    required: true
+    method: POST
+    path: /issues/set_status
+    role: employee
+    params:
+      headers:
+        Content-Type: application/json
+        X-Max-Init-Data: "${MAX_INIT_DATA_EMPLOYEE}"
+        Idempotency-Key: "${NEW_UUID_FOR_STATUS_UPDATE}"
+      body:
+        card_id: "${CARD_ID}"
+        status: in_progress
+        note: "Мастер вызван"
+    expected:
+      statusCodes: [200]
+      contentType: application/json
+      requiredFields: [card.id, card.status, card.current_note]
+      json:
+        card:
+          status: in_progress
+          current_note: "Мастер вызван"
